@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::ffi::CString;
+use std::{ffi::CString, thread, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -19,26 +19,27 @@ fn into_raw(vec: Vec<String>) -> *const *const std::os::raw::c_char {
     std::ptr::null()
 }
 
-fn main() {
-    println!("Hello, world!");
+use clap::Parser;
 
-    unsafe {
-        let renderer_config = FlutterRendererConfig {
-            type_: FlutterRendererType_kSoftware,
-            __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
-                software: FlutterSoftwareRendererConfig {
-                    struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
-                    surface_present_callback: Some(software_surface_present_callback),
-                },
-            },
-        };
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    assets_dir: String,
 
-        let assets_path = "foo";
-        let icu_data_path = "foo";
+    #[arg(long)]
+    icu_data_path: String,
+}
+
+impl From<Args> for FlutterProjectArgs {
+    fn from(args: Args) -> Self {
+        let assets_path = args.assets_dir;
+        let icu_data_path = args.icu_data_path;
 
         let arguments = vec!["arg".to_string()];
 
-        let project_args = FlutterProjectArgs {
+        FlutterProjectArgs {
             struct_size: std::mem::size_of::<FlutterProjectArgs>(),
             assets_path: CString::new(assets_path).unwrap().into_raw(),
             main_path__unused__: std::ptr::null(),
@@ -74,6 +75,22 @@ fn main() {
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
             update_semantics_callback: None,
+        }
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+
+    unsafe {
+        let renderer_config = FlutterRendererConfig {
+            type_: FlutterRendererType_kSoftware,
+            __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
+                software: FlutterSoftwareRendererConfig {
+                    struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
+                    surface_present_callback: Some(software_surface_present_callback),
+                },
+            },
         };
 
         // let flutter_renderer_config = FlutterRendereConfig {};
@@ -82,13 +99,19 @@ fn main() {
 
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
 
-        FlutterEngineRun(
+        let result = FlutterEngineRun(
             1,
             &renderer_config,
-            &project_args,
+            &args.into(),
             &mut user_data as *mut UserData as *mut std::ffi::c_void,
             &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
         );
+
+        let success = result == FlutterEngineResult_kSuccess;
+
+        println!("ran flutter success = {success}");
+
+        thread::sleep(Duration::from_secs(3));
     }
 }
 

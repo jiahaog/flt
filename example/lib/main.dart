@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-void main() {
+void main(List<String> args) {
+  print('hello world with args:${args}');
   runApp(const MyApp());
 }
 
