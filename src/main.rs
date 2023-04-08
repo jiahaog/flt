@@ -2,8 +2,11 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use bmp::{px, Image, Pixel};
 use clap::Parser;
+use crossterm::terminal;
+use flterminal::Pixel;
+use flterminal::TerminalWindow;
+use std::ffi::CStr;
 use std::{ffi::CString, slice, thread, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
@@ -17,30 +20,45 @@ extern "C" fn software_surface_present_callback(
     let slice: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let num_in_row = row_bytes / 4;
+    let terminal_window = user_data as *mut TerminalWindow;
+    let terminal_window: &mut TerminalWindow = unsafe { std::mem::transmute(terminal_window) };
 
-    let mut img = Image::new(WIDTH as u32, HEIGHT as u32);
+    let mut buf = vec![];
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].
-    for (i, v) in slice.chunks(4).enumerate() {
+    for v in slice.chunks(4) {
         let b = v[0];
         let g = v[1];
         let r = v[2];
-        let _a = v[3];
+        let a = v[3];
 
-        img.set_pixel(
-            (i % num_in_row) as u32,
-            (i / num_in_row) as u32,
-            px!(r, g, b),
-        );
+        buf.push(Pixel { r, g, b, a });
     }
-    img.save("test.bmp").unwrap();
+
+    terminal_window.update(&buf).unwrap();
 
     return true;
 }
 
-/// Simple program to greet a person
+extern "C" fn log_message_callback(
+    tag: *const ::std::os::raw::c_char,
+    message: *const ::std::os::raw::c_char,
+    user_data: *mut ::std::os::raw::c_void,
+) {
+    // TODO: Print to the main terminal.
+    let tag = to_string(tag);
+    let message = to_string(message);
+    println!("{tag}: {message}");
+}
+
+fn to_string(c_str: *const std::os::raw::c_char) -> String {
+    let message = unsafe { CStr::from_ptr(c_str) };
+    let message = message.to_owned();
+
+    message.to_str().unwrap().to_string()
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -90,7 +108,7 @@ impl From<Args> for FlutterProjectArgs {
             compute_platform_resolved_locale_callback: None,
             dart_entrypoint_argc: 0,
             dart_entrypoint_argv: std::ptr::null(),
-            log_message_callback: None,
+            log_message_callback: Some(log_message_callback),
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
             update_semantics_callback: None,
@@ -112,9 +130,12 @@ fn main() {
             },
         };
 
-        // let flutter_renderer_config = FlutterRendereConfig {};
-        // let flutter_project_args = FlutterProjectArgs {};
-        let mut user_data = UserData {};
+        let (width, height) = terminal::size().unwrap();
+        let (width, height) = (width as usize, height as usize);
+        // The terminal renderer merges two pixels (top and bottom) into one.
+        let height = height * 2;
+
+        let mut user_data = TerminalWindow::new(width, height);
 
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
 
@@ -122,17 +143,19 @@ fn main() {
             1,
             &renderer_config,
             &args.into(),
-            &mut user_data as *mut UserData as *mut std::ffi::c_void,
+            &mut user_data as *mut TerminalWindow as *mut std::ffi::c_void,
             &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
         );
 
-        let success = result == FlutterEngineResult_kSuccess;
+        assert_eq!(
+            result, FlutterEngineResult_kSuccess,
+            "Engine started successfully"
+        );
 
-        println!("ran flutter success = {success}");
         let event = FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
-            width: WIDTH,
-            height: HEIGHT,
+            width,
+            height,
             pixel_ratio: 1.0,
             left: 0,
             top: 0,
@@ -141,17 +164,20 @@ fn main() {
             physical_view_inset_bottom: 0.0,
             physical_view_inset_left: 0.0,
         };
-        let success = FlutterEngineSendWindowMetricsEvent(
+        let result = FlutterEngineSendWindowMetricsEvent(
             engine_ptr,
             &event as *const FlutterWindowMetricsEvent,
-        ) == FlutterEngineResult_kSuccess;
-        println!("Set windowmetricevent success = {success}");
+        );
+        // println!("Set windowmetricevent success = {success}");
+        assert_eq!(
+            result, FlutterEngineResult_kSuccess,
+            "Window metrics set successfully"
+        );
 
         thread::sleep(Duration::from_secs(3));
+
+        user_data.dispose();
     }
 }
-
-const WIDTH: usize = 500;
-const HEIGHT: usize = 400;
 
 struct UserData {}

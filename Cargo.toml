@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bmp = "0.5.0"
 clap = { version = "4.2.1", features = ["derive"] }
+crossterm = "0.26.1"
 
 
 [build-dependencies]
