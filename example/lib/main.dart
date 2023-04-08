@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 void main(List<String> args) {
   print('hello world with args:${args}');
-  runApp(const MyApp());
+  // runApp(Container(color: Color.fromARGB(255, 0, 255, 0)));
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {

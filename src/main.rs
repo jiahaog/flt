@@ -2,24 +2,43 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::{ffi::CString, thread, time::Duration};
+use bmp::{px, Image, Pixel};
+use clap::Parser;
+use std::{ffi::CString, slice, thread, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 extern "C" fn software_surface_present_callback(
-    arg1: *mut std::os::raw::c_void,
-    arg2: *const std::os::raw::c_void,
-    arg3: usize,
-    arg4: usize,
+    user_data: *mut std::os::raw::c_void,
+    allocation: *const std::os::raw::c_void,
+    row_bytes: usize,
+    height: usize,
 ) -> bool {
-    todo!()
-}
+    let slice: &[u8] =
+        unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-fn into_raw(vec: Vec<String>) -> *const *const std::os::raw::c_char {
-    std::ptr::null()
-}
+    let num_in_row = row_bytes / 4;
 
-use clap::Parser;
+    let mut img = Image::new(WIDTH as u32, HEIGHT as u32);
+
+    // In allocation, each group of 4 bits represents a pixel. In order, each of
+    // the 4 bits will be [b, g, r, a].
+    for (i, v) in slice.chunks(4).enumerate() {
+        let b = v[0];
+        let g = v[1];
+        let r = v[2];
+        let _a = v[3];
+
+        img.set_pixel(
+            (i % num_in_row) as u32,
+            (i / num_in_row) as u32,
+            px!(r, g, b),
+        );
+    }
+    img.save("test.bmp").unwrap();
+
+    return true;
+}
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -46,7 +65,7 @@ impl From<Args> for FlutterProjectArgs {
             packages_path__unused__: std::ptr::null(),
             icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
             command_line_argc: arguments.len() as i32,
-            command_line_argv: into_raw(arguments),
+            command_line_argv: std::ptr::null(),
             platform_message_callback: None,
             vm_snapshot_data: std::ptr::null(),
             vm_snapshot_data_size: 0,
@@ -110,9 +129,29 @@ fn main() {
         let success = result == FlutterEngineResult_kSuccess;
 
         println!("ran flutter success = {success}");
+        let event = FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
+            width: WIDTH,
+            height: HEIGHT,
+            pixel_ratio: 1.0,
+            left: 0,
+            top: 0,
+            physical_view_inset_top: 0.0,
+            physical_view_inset_right: 0.0,
+            physical_view_inset_bottom: 0.0,
+            physical_view_inset_left: 0.0,
+        };
+        let success = FlutterEngineSendWindowMetricsEvent(
+            engine_ptr,
+            &event as *const FlutterWindowMetricsEvent,
+        ) == FlutterEngineResult_kSuccess;
+        println!("Set windowmetricevent success = {success}");
 
         thread::sleep(Duration::from_secs(3));
     }
 }
+
+const WIDTH: usize = 500;
+const HEIGHT: usize = 400;
 
 struct UserData {}
