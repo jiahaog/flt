@@ -27,14 +27,14 @@ extern "C" fn software_surface_present_callback(
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
     let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
-    let terminal_window = &mut user_data.terminal;
-
     assert_eq!(
         user_data.corruption_token, "user_data",
         "not corrupt in software callback"
     );
+
+    let terminal_window = &mut user_data.terminal;
     assert_eq!(
-        terminal_window.corruption_token, "foo",
+        terminal_window.corruption_token, "terminal",
         "not corrupt in software callback"
     );
 
@@ -134,7 +134,19 @@ impl From<Args> for FlutterProjectArgs {
 }
 
 struct Embedder {
+    engine: FlutterEngine,
+    user_data: *mut UserData,
+}
+
+struct UserData {
     terminal: Terminal,
+    corruption_token: String,
+}
+
+impl Drop for Embedder {
+    fn drop(&mut self) {
+        unsafe { Box::from_raw(self.user_data) };
+    }
 }
 
 impl Embedder {
@@ -157,11 +169,23 @@ impl Embedder {
 
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
 
-        let mut terminal = Terminal::new(width, height, "foo".to_string());
-        let user_data = Box::into_raw(Box::new(UserData {
-            terminal: &mut terminal,
-            corruption_token: "user_data".to_string(),
-        }));
+        let mut embedder = Self {
+            engine: std::ptr::null_mut(),
+            // `UserData` needs to be on the heap so that the Flutter Engine
+            // callbacks can safely provide a pointer to it (if it was on the
+            // stack, there is a chance that the value is dropped when the
+            // callbacks still reference it). So opt into manual memory
+            // management of this struct.
+            user_data: Box::into_raw(
+                UserData {
+                    terminal: Terminal::new(width, height, "terminal".to_string()),
+                    corruption_token: "user_data".to_string(),
+                }
+                .into(),
+            ),
+        };
+
+        let user_data_ptr = embedder.user_data;
 
         assert_eq!(
             unsafe {
@@ -169,7 +193,8 @@ impl Embedder {
                     1,
                     &renderer_config,
                     &args.into(),
-                    user_data as *mut UserData as *mut std::ffi::c_void,
+                    user_data_ptr as *mut std::ffi::c_void,
+                    // std::mem::transmute(x),
                     &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
                 )
             },
@@ -220,7 +245,23 @@ impl Embedder {
             "Window metrics set successfully"
         );
 
-        Embedder { terminal }
+        let x = embedder;
+
+        // This will cause a segfault when reading user data in the software
+        // callback if the lifetime of the `user_data` from `x` is not handled
+        // properly.
+        embedder = Embedder {
+            engine: std::ptr::null_mut(),
+            user_data: Box::into_raw(
+                UserData {
+                    terminal: Terminal::new(0, 0, "no".to_string()),
+                    corruption_token: "no invalid".to_string(),
+                }
+                .into(),
+            ),
+        };
+
+        x
     }
 
     pub fn wait_for_input(&self) {
@@ -245,9 +286,4 @@ fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
             FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
         }
     }
-}
-
-struct UserData<'a> {
-    terminal: &'a mut Terminal,
-    corruption_token: String,
 }
