@@ -24,10 +24,11 @@ pub struct Terminal {
     // TODO: Support changing this at runtime.
     width: usize,
     height: usize,
+    pub corruption_token: String,
 }
 
 impl Terminal {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: usize, height: usize, corruption_token: String) -> Self {
         let mut stdout = stdout();
 
         // This causes the terminal to be output on an alternate buffer.
@@ -42,6 +43,7 @@ impl Terminal {
             lines: vec![vec![]; height / 2],
             width,
             height,
+            corruption_token,
         }
     }
 }
