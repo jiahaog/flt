@@ -133,9 +133,11 @@ impl From<Args> for FlutterProjectArgs {
     }
 }
 
-struct Embedder {
+pub struct Embedder {
     engine: FlutterEngine,
     user_data: *mut UserData,
+    engine_start_time: Duration,
+    start_instant: Instant,
 }
 
 struct UserData {
@@ -167,8 +169,6 @@ impl Embedder {
         // The terminal renderer merges two pixels (top and bottom) into one.
         let height = height * 2;
 
-        let engine_ptr: FlutterEngine = std::ptr::null_mut();
-
         let mut embedder = Self {
             engine: std::ptr::null_mut(),
             // `UserData` needs to be on the heap so that the Flutter Engine
@@ -183,6 +183,9 @@ impl Embedder {
                 }
                 .into(),
             ),
+
+            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
+            start_instant: Instant::now(),
         };
 
         let user_data_ptr = embedder.user_data;
@@ -195,7 +198,7 @@ impl Embedder {
                     &args.into(),
                     user_data_ptr as *mut std::ffi::c_void,
                     // std::mem::transmute(x),
-                    &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
+                    &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
                 )
             },
             FlutterEngineResult_kSuccess,
@@ -212,7 +215,7 @@ impl Embedder {
         assert_eq!(
             unsafe {
                 FlutterEngineNotifyDisplayUpdate(
-                    engine_ptr,
+                    embedder.engine,
                     FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
                     &display as *const FlutterEngineDisplay,
                     1,
@@ -237,7 +240,7 @@ impl Embedder {
         assert_eq!(
             unsafe {
                 FlutterEngineSendWindowMetricsEvent(
-                    engine_ptr,
+                    embedder.engine,
                     &event as *const FlutterWindowMetricsEvent,
                 )
             },
@@ -247,6 +250,8 @@ impl Embedder {
 
         let x = embedder;
 
+        // TODO(jiahaog): This is causing inputs to break somehow.
+        // TODO(jiahaog): Remove.
         // This will cause a segfault when reading user data in the software
         // callback if the lifetime of the `user_data` from `x` is not handled
         // properly.
@@ -259,19 +264,88 @@ impl Embedder {
                 }
                 .into(),
             ),
+            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
+            start_instant: Instant::now(),
         };
 
         x
     }
 
-    pub fn wait_for_input(&self) {
-        loop {}
+    /// Returns a duration from when the Flutter Engine was started.
+    fn duration_from_start(&self) -> Duration {
+        // Always offset instants from `engine_start_time` to match the engine time base.
+        Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
-}
 
-pub fn main() {
-    let embedder = Embedder::new();
-    embedder.wait_for_input();
+    pub fn wait_for_input(&self) {
+        loop {
+            match read().unwrap() {
+                crossterm::event::Event::FocusGained => todo!(),
+                crossterm::event::Event::FocusLost => todo!(),
+                crossterm::event::Event::Key(_) => todo!(),
+                crossterm::event::Event::Mouse(MouseEvent {
+                    kind,
+                    column,
+                    row,
+                    modifiers: _,
+                }) => {
+                    // The terminal renderer merges two pixels (top and bottom) into one.
+                    let row = row * 2;
+
+                    let (phase, buttons) = match kind {
+                        crossterm::event::MouseEventKind::Down(mouse_button) => (
+                            FlutterPointerPhase_kDown,
+                            to_flutter_mouse_button(mouse_button),
+                        ),
+                        crossterm::event::MouseEventKind::Up(mouse_button) => (
+                            FlutterPointerPhase_kUp,
+                            to_flutter_mouse_button(mouse_button),
+                        ),
+                        // Just continue as it's too annoying to log these common events.
+                        crossterm::event::MouseEventKind::Drag(_) => continue,
+                        crossterm::event::MouseEventKind::Moved => continue,
+                        kind => {
+                            println!("ignoring event {kind:?}");
+                            continue;
+                        }
+                    };
+
+                    let flutter_pointer_event = FlutterPointerEvent {
+                        struct_size: std::mem::size_of::<FlutterPointerEvent>(),
+                        phase,
+                        timestamp: self.duration_from_start().as_micros() as usize,
+                        x: column as f64,
+                        y: row as f64,
+                        device: 0,
+                        signal_kind: 0,
+                        scroll_delta_x: 0.0,
+                        scroll_delta_y: 0.0,
+                        device_kind: FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
+                        // This is probably a bitmask for multiple buttons so the
+                        // type doesn't match.
+                        buttons: buttons as i64,
+                        pan_x: 0.0,
+                        pan_y: 0.0,
+                        scale: 0.0,
+                        rotation: 0.0,
+                    };
+
+                    unsafe {
+                        assert_eq!(
+                            FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
+                            FlutterEngineResult_kSuccess
+                        );
+                        assert_eq!(
+                            FlutterEngineScheduleFrame(self.engine),
+                            FlutterEngineResult_kSuccess
+                        );
+                    }
+                }
+                crossterm::event::Event::Paste(_) => todo!(),
+                crossterm::event::Event::Resize(_, _) => todo!(),
+            }
+        }
+    }
 }
 
 fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
