@@ -3,13 +3,38 @@
 #![allow(non_snake_case)]
 
 use clap::Parser;
+use crossterm::event::read;
+use crossterm::event::MouseButton;
+use crossterm::event::MouseEvent;
 use crossterm::terminal;
 use flterminal::Pixel;
 use flterminal::TerminalWindow;
 use std::ffi::CStr;
-use std::{ffi::CString, slice, thread, time::Duration};
+use std::time::Instant;
+use std::{ffi::CString, slice, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+const FPS: usize = 60;
+
+extern "C" fn vsync_callback(user_data: *mut ::std::os::raw::c_void, baton: isize) {
+    let terminal_window = user_data as *mut TerminalWindow;
+    let terminal_window: &mut UserData = unsafe { std::mem::transmute(terminal_window) };
+    // let engine = &mut terminal_window.engine;
+
+    let time = unsafe { Duration::from_nanos(FlutterEngineGetCurrentTime()) };
+    let frame_time = Duration::from_secs(1 / (FPS as u64));
+
+    unsafe {
+        FlutterEngineOnVsync(
+            *terminal_window.engine,
+            baton,
+            // TODO(jiahaog): this is probably wrong.
+            (time + frame_time).as_nanos() as u64,
+            (time + frame_time + frame_time).as_nanos() as u64,
+        );
+    }
+}
 
 extern "C" fn software_surface_present_callback(
     user_data: *mut std::os::raw::c_void,
@@ -21,7 +46,8 @@ extern "C" fn software_surface_present_callback(
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
     let terminal_window = user_data as *mut TerminalWindow;
-    let terminal_window: &mut TerminalWindow = unsafe { std::mem::transmute(terminal_window) };
+    let terminal_window: &mut UserData = unsafe { std::mem::transmute(terminal_window) };
+    let terminal_window: &mut TerminalWindow = &mut terminal_window.terminal;
 
     let mut buf = vec![];
 
@@ -44,7 +70,7 @@ extern "C" fn software_surface_present_callback(
 extern "C" fn log_message_callback(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
-    user_data: *mut ::std::os::raw::c_void,
+    _user_data: *mut ::std::os::raw::c_void,
 ) {
     // TODO: Print to the main terminal.
     let tag = to_string(tag);
@@ -98,7 +124,7 @@ impl From<Args> for FlutterProjectArgs {
             update_semantics_custom_action_callback: None,
             persistent_cache_path: std::ptr::null(),
             is_persistent_cache_read_only: false,
-            vsync_callback: None,
+            vsync_callback: Some(vsync_callback),
             custom_dart_entrypoint: std::ptr::null(),
             custom_task_runners: std::ptr::null(),
             shutdown_dart_vm_when_done: true,
@@ -117,9 +143,8 @@ impl From<Args> for FlutterProjectArgs {
 }
 
 fn main() {
-    let args = Args::parse();
-
     unsafe {
+        let args = Args::parse();
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
             __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
@@ -135,21 +160,41 @@ fn main() {
         // The terminal renderer merges two pixels (top and bottom) into one.
         let height = height * 2;
 
-        let mut user_data = TerminalWindow::new(width, height);
-
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
+        let mut user_data = UserData {
+            terminal: TerminalWindow::new(width, height),
+            engine: &engine_ptr,
+        };
 
         let result = FlutterEngineRun(
             1,
             &renderer_config,
             &args.into(),
-            &mut user_data as *mut TerminalWindow as *mut std::ffi::c_void,
+            &mut user_data as *mut UserData as *mut std::ffi::c_void,
             &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
         );
 
         assert_eq!(
             result, FlutterEngineResult_kSuccess,
             "Engine started successfully"
+        );
+
+        let display = FlutterEngineDisplay {
+            struct_size: std::mem::size_of::<FlutterEngineDisplay>(),
+            display_id: 0,
+            single_display: true,
+            refresh_rate: FPS as f64,
+        };
+
+        assert_eq!(
+            FlutterEngineNotifyDisplayUpdate(
+                engine_ptr,
+                FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
+                &display as *const FlutterEngineDisplay,
+                1,
+            ),
+            FlutterEngineResult_kSuccess,
+            "notify display update"
         );
 
         let event = FlutterWindowMetricsEvent {
@@ -164,20 +209,98 @@ fn main() {
             physical_view_inset_bottom: 0.0,
             physical_view_inset_left: 0.0,
         };
-        let result = FlutterEngineSendWindowMetricsEvent(
-            engine_ptr,
-            &event as *const FlutterWindowMetricsEvent,
-        );
-        // println!("Set windowmetricevent success = {success}");
         assert_eq!(
-            result, FlutterEngineResult_kSuccess,
+            FlutterEngineSendWindowMetricsEvent(
+                engine_ptr,
+                &event as *const FlutterWindowMetricsEvent,
+            ),
+            FlutterEngineResult_kSuccess,
             "Window metrics set successfully"
         );
 
-        thread::sleep(Duration::from_secs(3));
+        let engine_start_time = Duration::from_nanos(FlutterEngineGetCurrentTime());
+        // Always offset instants from `engine_start_time` to match the engine time base.
+        let start_instant = Instant::now();
 
-        user_data.dispose();
+        loop {
+            match read().unwrap() {
+                crossterm::event::Event::FocusGained => todo!(),
+                crossterm::event::Event::FocusLost => todo!(),
+                crossterm::event::Event::Key(_) => todo!(),
+                crossterm::event::Event::Mouse(MouseEvent {
+                    kind,
+                    column,
+                    row,
+                    modifiers: _,
+                }) => {
+                    // The terminal renderer merges two pixels (top and bottom) into one.
+                    let row = row * 2;
+
+                    let (phase, buttons) = match kind {
+                        crossterm::event::MouseEventKind::Down(mouse_button) => (
+                            FlutterPointerPhase_kDown,
+                            to_flutter_mouse_button(mouse_button),
+                        ),
+                        crossterm::event::MouseEventKind::Up(mouse_button) => (
+                            FlutterPointerPhase_kUp,
+                            to_flutter_mouse_button(mouse_button),
+                        ),
+                        // Just continue as it's too annoying to log these common events.
+                        crossterm::event::MouseEventKind::Drag(_) => continue,
+                        crossterm::event::MouseEventKind::Moved => continue,
+                        kind => {
+                            println!("ignoring event {kind:?}");
+                            continue;
+                        }
+                    };
+
+                    let next_time =
+                        Instant::now().duration_since(start_instant) + engine_start_time;
+
+                    let flutter_pointer_event = FlutterPointerEvent {
+                        struct_size: std::mem::size_of::<FlutterPointerEvent>(),
+                        phase: phase,
+                        timestamp: next_time.as_micros() as usize,
+                        x: column as f64,
+                        y: row as f64,
+                        device: 0,
+                        signal_kind: 0,
+                        scroll_delta_x: 0.0,
+                        scroll_delta_y: 0.0,
+                        device_kind: FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
+                        // This is probably a bitmask for multiple buttons so the
+                        // type doesn't match.
+                        buttons: buttons as i64,
+                        pan_x: 0.0,
+                        pan_y: 0.0,
+                        scale: 0.0,
+                        rotation: 0.0,
+                    };
+
+                    FlutterEngineSendPointerEvent(engine_ptr, &flutter_pointer_event, 1);
+                    FlutterEngineScheduleFrame(engine_ptr);
+                }
+                crossterm::event::Event::Paste(_) => todo!(),
+                crossterm::event::Event::Resize(_, _) => todo!(),
+            }
+        }
     }
 }
+struct UserData<'a> {
+    engine: &'a FlutterEngine,
+    terminal: TerminalWindow,
+}
 
-struct UserData {}
+fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
+    match button {
+        crossterm::event::MouseButton::Left => {
+            FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary
+        }
+        crossterm::event::MouseButton::Right => {
+            FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
+        }
+        crossterm::event::MouseButton::Middle => {
+            FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
+        }
+    }
+}

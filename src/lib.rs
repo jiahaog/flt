@@ -6,10 +6,10 @@ use std::io::stdout;
 use std::io::Stdout;
 use std::io::Write;
 use std::iter::zip;
-use std::thread;
-use std::time::Duration;
 
 use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableMouseCapture;
 use crossterm::style::{Color, PrintStyledContent, Stylize};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
@@ -35,6 +35,7 @@ impl TerminalWindow {
         stdout.execute(Hide).unwrap();
 
         enable_raw_mode().unwrap();
+        stdout.execute(EnableMouseCapture).unwrap();
 
         Self {
             stdout,
@@ -45,9 +46,7 @@ impl TerminalWindow {
     }
 }
 
-const FPS: f64 = 60.0;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Pixel {
     pub r: u8,
     pub g: u8,
@@ -74,18 +73,21 @@ impl Pixel {
 }
 
 impl From<Pixel> for Color {
-    fn from(Pixel { r, g, b, a }: Pixel) -> Self {
-        Color::Rgb { r: r, g: g, b: b }
+    fn from(Pixel { r, g, b, a: _ }: Pixel) -> Self {
+        Color::Rgb { r, g, b }
     }
 }
 
-impl TerminalWindow {
-    pub fn dispose(&mut self) {
+impl Drop for TerminalWindow {
+    fn drop(&mut self) {
+        self.stdout.execute(DisableMouseCapture).unwrap();
         disable_raw_mode().unwrap();
         self.stdout.execute(Show).unwrap();
         self.stdout.execute(LeaveAlternateScreen).unwrap();
     }
+}
 
+impl TerminalWindow {
     pub fn update(&mut self, buffer: &Vec<Pixel>) -> Result<(), Error> {
         let mut buffer = buffer.to_vec();
         // Always process an even number of rows.
@@ -172,8 +174,6 @@ impl TerminalWindow {
         self.stdout.flush()?;
 
         self.lines = lines;
-
-        thread::sleep(Duration::from_secs_f64(FPS));
 
         Ok(())
     }
