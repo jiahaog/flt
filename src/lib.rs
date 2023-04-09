@@ -30,6 +30,10 @@ extern "C" fn software_surface_present_callback(
     let terminal_window = &mut user_data.terminal;
 
     assert_eq!(
+        user_data.corruption_token, "user_data",
+        "not corrupt in software callback"
+    );
+    assert_eq!(
         terminal_window.corruption_token, "foo",
         "not corrupt in software callback"
     );
@@ -129,8 +133,12 @@ impl From<Args> for FlutterProjectArgs {
     }
 }
 
-pub fn main() {
-    {
+struct Embedder {
+    terminal: Terminal,
+}
+
+impl Embedder {
+    pub fn new() -> Self {
         let args = Args::parse();
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
@@ -150,9 +158,10 @@ pub fn main() {
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
 
         let mut terminal = Terminal::new(width, height, "foo".to_string());
-        let mut user_data = UserData {
+        let user_data = Box::into_raw(Box::new(UserData {
             terminal: &mut terminal,
-        };
+            corruption_token: "user_data".to_string(),
+        }));
 
         assert_eq!(
             unsafe {
@@ -160,7 +169,7 @@ pub fn main() {
                     1,
                     &renderer_config,
                     &args.into(),
-                    &mut user_data as *mut UserData as *mut std::ffi::c_void,
+                    user_data as *mut UserData as *mut std::ffi::c_void,
                     &engine_ptr as *const FlutterEngine as *mut FlutterEngine,
                 )
             },
@@ -210,9 +219,18 @@ pub fn main() {
             FlutterEngineResult_kSuccess,
             "Window metrics set successfully"
         );
+
+        Embedder { terminal }
     }
 
-    loop {}
+    pub fn wait_for_input(&self) {
+        loop {}
+    }
+}
+
+pub fn main() {
+    let embedder = Embedder::new();
+    embedder.wait_for_input();
 }
 
 fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
@@ -231,4 +249,5 @@ fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
 
 struct UserData<'a> {
     terminal: &'a mut Terminal,
+    corruption_token: String,
 }
