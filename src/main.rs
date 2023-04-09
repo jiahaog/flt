@@ -17,25 +17,6 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 const FPS: usize = 60;
 
-extern "C" fn vsync_callback(user_data: *mut ::std::os::raw::c_void, baton: isize) {
-    let terminal_window = user_data as *mut TerminalWindow;
-    let terminal_window: &mut UserData = unsafe { std::mem::transmute(terminal_window) };
-    // let engine = &mut terminal_window.engine;
-
-    let time = unsafe { Duration::from_nanos(FlutterEngineGetCurrentTime()) };
-    let frame_time = Duration::from_secs(1 / (FPS as u64));
-
-    unsafe {
-        FlutterEngineOnVsync(
-            *terminal_window.engine,
-            baton,
-            // TODO(jiahaog): this is probably wrong.
-            (time + frame_time).as_nanos() as u64,
-            (time + frame_time + frame_time).as_nanos() as u64,
-        );
-    }
-}
-
 extern "C" fn software_surface_present_callback(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
@@ -124,7 +105,7 @@ impl From<Args> for FlutterProjectArgs {
             update_semantics_custom_action_callback: None,
             persistent_cache_path: std::ptr::null(),
             is_persistent_cache_read_only: false,
-            vsync_callback: Some(vsync_callback),
+            vsync_callback: None,
             custom_dart_entrypoint: std::ptr::null(),
             custom_task_runners: std::ptr::null(),
             shutdown_dart_vm_when_done: true,
@@ -163,7 +144,6 @@ fn main() {
         let engine_ptr: FlutterEngine = std::ptr::null_mut();
         let mut user_data = UserData {
             terminal: TerminalWindow::new(width, height),
-            engine: &engine_ptr,
         };
 
         let result = FlutterEngineRun(
@@ -286,10 +266,6 @@ fn main() {
         }
     }
 }
-struct UserData<'a> {
-    engine: &'a FlutterEngine,
-    terminal: TerminalWindow,
-}
 
 fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
     match button {
@@ -303,4 +279,8 @@ fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
             FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
         }
     }
+}
+
+struct UserData {
+    terminal: TerminalWindow,
 }
