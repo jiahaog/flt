@@ -23,25 +23,26 @@ extern "C" fn software_surface_present_callback(
     row_bytes: usize,
     height: usize,
 ) -> bool {
-    let slice: &[u8] =
+    let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let terminal_window = user_data as *mut TerminalWindow;
-    let terminal_window: &mut UserData = unsafe { std::mem::transmute(terminal_window) };
-    let terminal_window: &mut TerminalWindow = &mut terminal_window.terminal;
-
-    let mut buf = vec![];
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let terminal_window = &mut user_data.terminal;
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].
-    for v in slice.chunks(4) {
-        let b = v[0];
-        let g = v[1];
-        let r = v[2];
-        let a = v[3];
+    let buf = allocation
+        .chunks(4)
+        .into_iter()
+        .map(|c| {
+            let b = c[0];
+            let g = c[1];
+            let r = c[2];
+            let a = c[3];
 
-        buf.push(Pixel { r, g, b, a });
-    }
+            Pixel { r, g, b, a }
+        })
+        .collect::<Vec<Pixel>>();
 
     terminal_window.update(&buf).unwrap();
 
@@ -239,7 +240,7 @@ fn main() {
 
                     let flutter_pointer_event = FlutterPointerEvent {
                         struct_size: std::mem::size_of::<FlutterPointerEvent>(),
-                        phase: phase,
+                        phase,
                         timestamp: next_time.as_micros() as usize,
                         x: column as f64,
                         y: row as f64,
