@@ -248,27 +248,7 @@ impl Embedder {
             "Window metrics set successfully"
         );
 
-        let x = embedder;
-
-        // TODO(jiahaog): This is causing inputs to break somehow.
-        // TODO(jiahaog): Remove.
-        // This will cause a segfault when reading user data in the software
-        // callback if the lifetime of the `user_data` from `x` is not handled
-        // properly.
-        embedder = Embedder {
-            engine: std::ptr::null_mut(),
-            user_data: Box::into_raw(
-                UserData {
-                    terminal: Terminal::new(0, 0, "no".to_string()),
-                    corruption_token: "no invalid".to_string(),
-                }
-                .into(),
-            ),
-            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
-            start_instant: Instant::now(),
-        };
-
-        x
+        embedder
     }
 
     /// Returns a duration from when the Flutter Engine was started.
