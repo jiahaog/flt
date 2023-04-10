@@ -2,7 +2,6 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use clap::Parser;
 use crossterm::event::read;
 use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
@@ -58,40 +57,11 @@ extern "C" fn software_surface_present_callback(
     return true;
 }
 
-extern "C" fn log_message_callback(
-    tag: *const ::std::os::raw::c_char,
-    message: *const ::std::os::raw::c_char,
-    _user_data: *mut ::std::os::raw::c_void,
-) {
-    // TODO: Print to the main terminal.
-    let tag = to_string(tag);
-    let message = to_string(message);
-    println!("{tag}: {message}");
-}
-
-fn to_string(c_str: *const std::os::raw::c_char) -> String {
-    let message = unsafe { CStr::from_ptr(c_str) };
-    let message = message.to_owned();
-
-    message.to_str().unwrap().to_string()
-}
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(long)]
-    assets_dir: String,
-
-    #[arg(long)]
-    icu_data_path: String,
-}
-
-impl From<Args> for FlutterProjectArgs {
-    fn from(args: Args) -> Self {
-        let assets_path = args.assets_dir;
-        let icu_data_path = args.icu_data_path;
-
+impl FlutterProjectArgs {
+    fn new(assets_path: String, icu_data_path: String) -> Self {
         let arguments = vec!["arg".to_string()];
+
+        // let log_callback = LogCallback {};
 
         FlutterProjectArgs {
             struct_size: std::mem::size_of::<FlutterProjectArgs>(),
@@ -133,6 +103,24 @@ impl From<Args> for FlutterProjectArgs {
     }
 }
 
+extern "C" fn log_message_callback(
+    tag: *const ::std::os::raw::c_char,
+    message: *const ::std::os::raw::c_char,
+    _user_data: *mut ::std::os::raw::c_void,
+) {
+    // TODO: Print to the main terminal.
+    let tag = to_string(tag);
+    let message = to_string(message);
+    println!("{tag}: {message}");
+}
+
+fn to_string(c_str: *const std::os::raw::c_char) -> String {
+    let message = unsafe { CStr::from_ptr(c_str) };
+    let message = message.to_owned();
+
+    message.to_str().unwrap().to_string()
+}
+
 pub struct Embedder {
     engine: FlutterEngine,
     user_data: *mut UserData,
@@ -152,8 +140,7 @@ impl Drop for Embedder {
 }
 
 impl Embedder {
-    pub fn new() -> Self {
-        let args = Args::parse();
+    pub fn new(assets_dir: String, icu_data_path: String) -> Self {
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
             __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
@@ -169,7 +156,7 @@ impl Embedder {
         // The terminal renderer merges two pixels (top and bottom) into one.
         let height = height * 2;
 
-        let mut embedder = Self {
+        let embedder = Self {
             engine: std::ptr::null_mut(),
             // `UserData` needs to be on the heap so that the Flutter Engine
             // callbacks can safely provide a pointer to it (if it was on the
@@ -189,15 +176,15 @@ impl Embedder {
         };
 
         let user_data_ptr = embedder.user_data;
+        let flutter_project_args = FlutterProjectArgs::new(assets_dir, icu_data_path);
 
         assert_eq!(
             unsafe {
                 FlutterEngineRun(
                     1,
                     &renderer_config,
-                    &args.into(),
+                    &flutter_project_args as *const FlutterProjectArgs,
                     user_data_ptr as *mut std::ffi::c_void,
-                    // std::mem::transmute(x),
                     &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
                 )
             },
