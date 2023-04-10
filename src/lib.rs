@@ -52,7 +52,21 @@ extern "C" fn software_surface_present_callback(
         })
         .collect::<Vec<Pixel>>();
 
-    terminal_window.update(&buf).unwrap();
+    /*
+      bytes / row = row_bytes
+      elements / byte = 1
+
+      1 pixel = 4 elements
+      elements / pixel = 1/4
+      width = pixels / row = pixels * (elements / pixel) / row = 1/4 * elements / row
+
+      width = 1/4 * (elements / byte) * (bytes / row)
+      width = 1/4 * 1 * row_bytes
+      width = row_bytes / 4
+    */
+    let width = row_bytes / 4;
+
+    terminal_window.update(width, height, &buf).unwrap();
 
     return true;
 }
@@ -151,11 +165,6 @@ impl Embedder {
             },
         };
 
-        let (width, height) = crossterm::terminal::size().unwrap();
-        let (width, height) = (width as usize, height as usize);
-        // The terminal renderer merges two pixels (top and bottom) into one.
-        let height = height * 2;
-
         let embedder = Self {
             engine: std::ptr::null_mut(),
             // `UserData` needs to be on the heap so that the Flutter Engine
@@ -165,7 +174,7 @@ impl Embedder {
             // management of this struct.
             user_data: Box::into_raw(
                 UserData {
-                    terminal: Terminal::new(width, height, "terminal".to_string()),
+                    terminal: Terminal::new("terminal".to_string()),
                     corruption_token: "user_data".to_string(),
                 }
                 .into(),
@@ -211,6 +220,9 @@ impl Embedder {
             FlutterEngineResult_kSuccess,
             "notify display update"
         );
+
+        let s = unsafe { &*embedder.user_data };
+        let (width, height) = s.terminal.size();
 
         let event = FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
@@ -309,7 +321,31 @@ impl Embedder {
                     }
                 }
                 crossterm::event::Event::Paste(_) => todo!(),
-                crossterm::event::Event::Resize(_, _) => todo!(),
+                crossterm::event::Event::Resize(columns, rows) => {
+                    let event = FlutterWindowMetricsEvent {
+                        struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
+                        width: columns as usize,
+                        // The terminal renderer merges two pixels (top and bottom) into one.
+                        height: (rows * 2) as usize,
+                        pixel_ratio: 1.0,
+                        left: 0,
+                        top: 0,
+                        physical_view_inset_top: 0.0,
+                        physical_view_inset_right: 0.0,
+                        physical_view_inset_bottom: 0.0,
+                        physical_view_inset_left: 0.0,
+                    };
+                    assert_eq!(
+                        unsafe {
+                            FlutterEngineSendWindowMetricsEvent(
+                                self.engine,
+                                &event as *const FlutterWindowMetricsEvent,
+                            )
+                        },
+                        FlutterEngineResult_kSuccess,
+                        "Window metrics set successfully"
+                    );
+                }
             }
         }
     }

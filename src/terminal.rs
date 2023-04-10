@@ -11,6 +11,7 @@ use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
 use crossterm::style::{Color, PrintStyledContent, Stylize};
+use crossterm::terminal::size;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -21,14 +22,11 @@ use crossterm::QueueableCommand;
 pub struct Terminal {
     stdout: Stdout,
     lines: Vec<Vec<(Pixel, char)>>,
-    // TODO: Support changing this at runtime.
-    width: usize,
-    height: usize,
     pub corruption_token: String,
 }
 
 impl Terminal {
-    pub fn new(width: usize, height: usize, corruption_token: String) -> Self {
+    pub fn new(corruption_token: String) -> Self {
         let mut stdout = stdout();
 
         // This causes the terminal to be output on an alternate buffer.
@@ -40,11 +38,18 @@ impl Terminal {
 
         Self {
             stdout,
-            lines: vec![vec![]; height / 2],
-            width,
-            height,
+            lines: vec![],
             corruption_token,
         }
+    }
+
+    pub fn size(&self) -> (usize, usize) {
+        let (width, height) = size().unwrap();
+        (
+            width as usize,
+            // The terminal renderer merges two pixels (top and bottom) into one.
+            (height * 2) as usize,
+        )
     }
 }
 
@@ -90,11 +95,16 @@ impl Drop for Terminal {
 }
 
 impl Terminal {
-    pub fn update(&mut self, buffer: &Vec<Pixel>) -> Result<(), Error> {
+    pub fn update(
+        &mut self,
+        width: usize,
+        height: usize,
+        buffer: &Vec<Pixel>,
+    ) -> Result<(), Error> {
         let mut buffer = buffer.to_vec();
         // Always process an even number of rows.
         if buffer.len() % 2 != 0 {
-            buffer.extend(vec![Pixel::zero(); self.width]);
+            buffer.extend(vec![Pixel::zero(); width]);
         }
 
         // Each element is one pixel, but when it is rendered to the terminal,
@@ -106,7 +116,7 @@ impl Terminal {
             .iter()
             .enumerate()
             .filter(|(i, _)| {
-                let row = i / self.width;
+                let row = i / width;
 
                 if row % 2 == 0 {
                     true
@@ -119,7 +129,7 @@ impl Terminal {
             .iter()
             .enumerate()
             .filter(|(i, _)| {
-                let row = i / self.width;
+                let row = i / width;
 
                 if row % 2 == 1 {
                     true
@@ -132,7 +142,7 @@ impl Terminal {
         let lines = zip(tops, bottoms)
             .enumerate()
             .fold(vec![], |mut acc, (i, (top, bottom))| {
-                if i % self.width == 0 {
+                if i % width == 0 {
                     acc.push(vec![]);
                 }
                 let character = match (top.is_lit(), bottom.is_lit()) {
@@ -149,8 +159,7 @@ impl Terminal {
                 acc
             });
 
-        assert_eq!(lines.len(), self.height / 2);
-        assert_eq!(lines.len(), self.lines.len());
+        assert_eq!(lines.len(), height / 2);
 
         // Refreshing the entire terminal (with the clear char) and outputting
         // everything on every iteration is costly and causes the terminal to
@@ -158,6 +167,13 @@ impl Terminal {
         //
         // Instead, only "re-render" the current line, if it is different from
         // the previous frame.
+
+        // Means that the screen dimensions has changed.
+        if self.lines.len() != lines.len() {
+            // TODO(jiahaog): Find a faster way to do this.
+            // Use empty values so the diffing check below always fail.
+            self.lines = vec![vec![]; lines.len()];
+        }
 
         for (i, (prev, current)) in zip(&self.lines, &lines).enumerate() {
             if !do_vecs_match(prev, current) {
