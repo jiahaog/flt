@@ -3,6 +3,9 @@
 #![allow(non_snake_case)]
 
 use crossterm::event::read;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyModifiers;
 use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
 use std::ffi::CStr;
@@ -71,19 +74,41 @@ extern "C" fn software_surface_present_callback(
     return true;
 }
 
-impl FlutterProjectArgs {
-    fn new(assets_path: String, icu_data_path: String) -> Self {
-        let arguments = vec!["arg".to_string()];
+struct ProjectArgs {
+    assets_path: *mut i8,
+    icu_data_path: *mut i8,
+}
 
-        // let log_callback = LogCallback {};
+impl ProjectArgs {
+    fn new(assets_path: &str, icu_data_path: &str) -> Self {
+        let assets_path = CString::new(assets_path).unwrap().into_raw();
+        let icu_data_path = CString::new(icu_data_path).unwrap().into_raw();
 
+        Self {
+            assets_path,
+            icu_data_path,
+        }
+    }
+}
+
+impl Drop for ProjectArgs {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CString::from_raw(self.assets_path);
+            let _ = CString::from_raw(self.icu_data_path);
+        }
+    }
+}
+
+impl From<&ProjectArgs> for FlutterProjectArgs {
+    fn from(value: &ProjectArgs) -> Self {
         FlutterProjectArgs {
             struct_size: std::mem::size_of::<FlutterProjectArgs>(),
-            assets_path: CString::new(assets_path).unwrap().into_raw(),
+            assets_path: value.assets_path,
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
-            icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
-            command_line_argc: arguments.len() as i32,
+            icu_data_path: value.icu_data_path,
+            command_line_argc: 0,
             command_line_argv: std::ptr::null(),
             platform_message_callback: None,
             vm_snapshot_data: std::ptr::null(),
@@ -149,12 +174,13 @@ struct UserData {
 
 impl Drop for Embedder {
     fn drop(&mut self) {
+        unsafe { FlutterEngineShutdown(self.engine) };
         unsafe { Box::from_raw(self.user_data) };
     }
 }
 
 impl Embedder {
-    pub fn new(assets_dir: String, icu_data_path: String) -> Self {
+    pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
             __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
@@ -164,6 +190,8 @@ impl Embedder {
                 },
             },
         };
+
+        let project_args = ProjectArgs::new(assets_dir, icu_data_path);
 
         let embedder = Self {
             engine: std::ptr::null_mut(),
@@ -185,14 +213,13 @@ impl Embedder {
         };
 
         let user_data_ptr = embedder.user_data;
-        let flutter_project_args = FlutterProjectArgs::new(assets_dir, icu_data_path);
 
         assert_eq!(
             unsafe {
                 FlutterEngineRun(
                     1,
                     &renderer_config,
-                    &flutter_project_args as *const FlutterProjectArgs,
+                    &FlutterProjectArgs::from(&project_args) as *const FlutterProjectArgs,
                     user_data_ptr as *mut std::ffi::c_void,
                     &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
                 )
@@ -257,11 +284,18 @@ impl Embedder {
     }
 
     pub fn wait_for_input(&self) {
+        // TODO move this into the terminal
         loop {
             match read().unwrap() {
                 crossterm::event::Event::FocusGained => todo!(),
                 crossterm::event::Event::FocusLost => todo!(),
-                crossterm::event::Event::Key(_) => todo!(),
+                crossterm::event::Event::Key(KeyEvent {
+                    code, modifiers, ..
+                }) => {
+                    if code == KeyCode::Char('c') && modifiers == KeyModifiers::CONTROL {
+                        break;
+                    }
+                }
                 crossterm::event::Event::Mouse(MouseEvent {
                     kind,
                     column,

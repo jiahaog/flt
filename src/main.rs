@@ -13,6 +13,6 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let embedder = flterminal::Embedder::new(args.assets_dir, args.icu_data_path);
+    let embedder = flterminal::Embedder::new(&args.assets_dir, &args.icu_data_path);
     embedder.wait_for_input();
 }
