@@ -19,13 +19,13 @@ use crossterm::ErrorKind;
 use crossterm::ExecutableCommand;
 use crossterm::QueueableCommand;
 
-pub struct Terminal {
+pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<(Pixel, char)>>,
     pub corruption_token: String,
 }
 
-impl Terminal {
+impl TerminalWindow {
     pub fn new(corruption_token: String) -> Self {
         let mut stdout = stdout();
 
@@ -85,7 +85,7 @@ impl From<Pixel> for Color {
     }
 }
 
-impl Drop for Terminal {
+impl Drop for TerminalWindow {
     fn drop(&mut self) {
         self.stdout.execute(DisableMouseCapture).unwrap();
         disable_raw_mode().unwrap();
@@ -94,7 +94,7 @@ impl Drop for Terminal {
     }
 }
 
-impl Terminal {
+impl TerminalWindow {
     pub fn update(
         &mut self,
         width: usize,

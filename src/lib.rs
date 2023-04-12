@@ -11,9 +11,9 @@ use crossterm::event::MouseEvent;
 use std::ffi::CStr;
 use std::time::Instant;
 use std::{ffi::CString, slice, time::Duration};
-use terminal::{Pixel, Terminal};
+use terminal_window::{Pixel, TerminalWindow};
 
-mod terminal;
+mod terminal_window;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -168,7 +168,7 @@ pub struct Embedder {
 }
 
 struct UserData {
-    terminal: Terminal,
+    terminal: TerminalWindow,
     corruption_token: String,
 }
 
@@ -202,7 +202,7 @@ impl Embedder {
             // management of this struct.
             user_data: Box::into_raw(
                 UserData {
-                    terminal: Terminal::new("terminal".to_string()),
+                    terminal: TerminalWindow::new("terminal".to_string()),
                     corruption_token: "user_data".to_string(),
                 }
                 .into(),
@@ -284,7 +284,6 @@ impl Embedder {
     }
 
     pub fn wait_for_input(&self) {
-        // TODO move this into the terminal
         loop {
             match read().unwrap() {
                 crossterm::event::Event::FocusGained => todo!(),
