@@ -95,12 +95,7 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub fn update(
-        &mut self,
-        width: usize,
-        height: usize,
-        buffer: &Vec<Pixel>,
-    ) -> Result<(), Error> {
+    pub fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) -> Result<(), Error> {
         let mut buffer = buffer.to_vec();
         // Always process an even number of rows.
         if buffer.len() % 2 != 0 {

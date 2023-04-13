@@ -28,7 +28,7 @@ extern "C" fn software_surface_present_callback(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut TerminalEmbedder = unsafe { std::mem::transmute(user_data) };
     assert_eq!(
         user_data.corruption_token, "user_data",
         "not corrupt in software callback"
@@ -69,7 +69,7 @@ extern "C" fn software_surface_present_callback(
     */
     let width = row_bytes / 4;
 
-    terminal_window.update(width, height, &buf).unwrap();
+    user_data.draw(width, height, buf);
 
     return true;
 }
@@ -142,15 +142,22 @@ impl From<&ProjectArgs> for FlutterProjectArgs {
     }
 }
 
+trait Engine {
+    fn log(&self, tag: String, message: String);
+
+    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
+}
+
 extern "C" fn log_message_callback(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
-    _user_data: *mut ::std::os::raw::c_void,
+    user_data: *mut ::std::os::raw::c_void,
 ) {
-    // TODO: Print to the main terminal.
+    let user_data: &mut TerminalEmbedder = unsafe { std::mem::transmute(user_data) };
     let tag = to_string(tag);
     let message = to_string(message);
-    println!("{tag}: {message}");
+
+    user_data.log(tag, message);
 }
 
 fn to_string(c_str: *const std::os::raw::c_char) -> String {
@@ -160,26 +167,37 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     message.to_str().unwrap().to_string()
 }
 
-pub struct Embedder {
+pub struct SafeEngine {
     engine: FlutterEngine,
-    user_data: *mut UserData,
+    user_data: *mut TerminalEmbedder,
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
-struct UserData {
+struct TerminalEmbedder {
     terminal: TerminalWindow,
     corruption_token: String,
 }
 
-impl Drop for Embedder {
+impl Engine for TerminalEmbedder {
+    fn log(&self, tag: String, message: String) {
+        // TODO: Print to the main terminal.
+        println!("{tag}: {message}");
+    }
+
+    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
+        self.terminal.draw(width, height, buffer).unwrap();
+    }
+}
+
+impl Drop for SafeEngine {
     fn drop(&mut self) {
         unsafe { FlutterEngineShutdown(self.engine) };
         unsafe { Box::from_raw(self.user_data) };
     }
 }
 
-impl Embedder {
+impl SafeEngine {
     pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
@@ -201,7 +219,7 @@ impl Embedder {
             // callbacks still reference it). So opt into manual memory
             // management of this struct.
             user_data: Box::into_raw(
-                UserData {
+                TerminalEmbedder {
                     terminal: TerminalWindow::new("terminal".to_string()),
                     corruption_token: "user_data".to_string(),
                 }
