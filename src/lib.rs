@@ -195,11 +195,20 @@ impl TerminalEmbedder {
             outside: terminal_window.clone(),
         };
 
-        Self {
+        let terminal_embedder = Self {
             corruption_token: "user_data".to_string(),
             terminal_window: terminal_window.clone(),
             engine: SafeEngine::new(assets_dir, icu_data_path, embedder),
-        }
+        };
+
+        terminal_embedder.engine.notify_display_update(FPS as f64);
+
+        let (width, height) = terminal_window.borrow().size();
+        terminal_embedder
+            .engine
+            .send_window_metrics_event(width, height);
+
+        terminal_embedder
     }
 
     pub fn wait_for_input(&self) {
@@ -375,17 +384,27 @@ impl<T: Embedder> SafeEngine<T> {
             "Engine started successfully"
         );
 
+        embedder
+    }
+
+    /// Returns a duration from when the Flutter Engine was started.
+    fn duration_from_start(&self) -> Duration {
+        // Always offset instants from `engine_start_time` to match the engine time base.
+        Instant::now().duration_since(self.start_instant) + self.engine_start_time
+    }
+
+    fn notify_display_update(&self, refresh_rate: f64) {
         let display = FlutterEngineDisplay {
             struct_size: std::mem::size_of::<FlutterEngineDisplay>(),
             display_id: 0,
             single_display: true,
-            refresh_rate: FPS as f64,
+            refresh_rate,
         };
 
         assert_eq!(
             unsafe {
                 FlutterEngineNotifyDisplayUpdate(
-                    embedder.engine,
+                    self.engine,
                     FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
                     &display as *const FlutterEngineDisplay,
                     1,
@@ -394,10 +413,9 @@ impl<T: Embedder> SafeEngine<T> {
             FlutterEngineResult_kSuccess,
             "notify display update"
         );
+    }
 
-        let s = unsafe { &*embedder.user_data };
-        let (width, height) = s.size();
-
+    fn send_window_metrics_event(&self, width: usize, height: usize) {
         let event = FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
             width,
@@ -413,21 +431,13 @@ impl<T: Embedder> SafeEngine<T> {
         assert_eq!(
             unsafe {
                 FlutterEngineSendWindowMetricsEvent(
-                    embedder.engine,
+                    self.engine,
                     &event as *const FlutterWindowMetricsEvent,
                 )
             },
             FlutterEngineResult_kSuccess,
             "Window metrics set successfully"
         );
-
-        embedder
-    }
-
-    /// Returns a duration from when the Flutter Engine was started.
-    fn duration_from_start(&self) -> Duration {
-        // Always offset instants from `engine_start_time` to match the engine time base.
-        Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 }
 
