@@ -8,7 +8,9 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
+use std::cell::RefCell;
 use std::ffi::CStr;
+use std::rc::Rc;
 use std::time::Instant;
 use std::{ffi::CString, slice, time::Duration};
 use terminal_window::{Pixel, TerminalWindow};
@@ -28,15 +30,12 @@ extern "C" fn software_surface_present_callback(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let user_data: &mut TerminalEmbedder = unsafe { std::mem::transmute(user_data) };
-    assert_eq!(
-        user_data.corruption_token, "user_data",
-        "not corrupt in software callback"
-    );
+    let user_data: &mut TerminalEmbedderImpl = unsafe { std::mem::transmute(user_data) };
 
-    let terminal_window = &mut user_data.terminal;
+    let terminal_window = &mut user_data.outside;
     assert_eq!(
-        terminal_window.corruption_token, "terminal",
+        terminal_window.borrow().corruption_token,
+        "terminal",
         "not corrupt in software callback"
     );
 
@@ -142,18 +141,12 @@ impl From<&ProjectArgs> for FlutterProjectArgs {
     }
 }
 
-trait Engine {
-    fn log(&self, tag: String, message: String);
-
-    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
-}
-
 extern "C" fn log_message_callback(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut TerminalEmbedder = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut TerminalEmbedderImpl = unsafe { std::mem::transmute(user_data) };
     let tag = to_string(tag);
     let message = to_string(message);
 
@@ -167,138 +160,46 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     message.to_str().unwrap().to_string()
 }
 
-pub struct SafeEngine {
+struct SafeEngine<T: Embedder> {
     engine: FlutterEngine,
-    user_data: *mut TerminalEmbedder,
+    user_data: *mut T,
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
-struct TerminalEmbedder {
-    terminal: TerminalWindow,
+struct TerminalEmbedderImpl {
+    outside: Rc<RefCell<TerminalWindow>>,
+}
+pub trait Embedder {
+    fn log(&self, tag: String, message: String);
+
+    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
+
+    // TODO(jiahaog): Remove. The Terminal Embedder should have methods to set
+    // the size on the engine.
+    fn size(&self) -> (usize, usize);
+}
+
+pub struct TerminalEmbedder {
+    // terminal_embedder_impl: Box<TerminalEmbedderImpl>,
     corruption_token: String,
+    engine: SafeEngine<TerminalEmbedderImpl>,
+    terminal_window: Rc<RefCell<TerminalWindow>>,
 }
 
-impl Engine for TerminalEmbedder {
-    fn log(&self, tag: String, message: String) {
-        // TODO: Print to the main terminal.
-        println!("{tag}: {message}");
-    }
-
-    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
-        self.terminal.draw(width, height, buffer).unwrap();
-    }
-}
-
-impl Drop for SafeEngine {
-    fn drop(&mut self) {
-        unsafe { FlutterEngineShutdown(self.engine) };
-        unsafe { Box::from_raw(self.user_data) };
-    }
-}
-
-impl SafeEngine {
+impl TerminalEmbedder {
     pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
-        let renderer_config = FlutterRendererConfig {
-            type_: FlutterRendererType_kSoftware,
-            __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
-                software: FlutterSoftwareRendererConfig {
-                    struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
-                    surface_present_callback: Some(software_surface_present_callback),
-                },
-            },
+        let terminal_window = Rc::new(RefCell::new(TerminalWindow::new("terminal".to_string())));
+
+        let embedder = TerminalEmbedderImpl {
+            outside: terminal_window.clone(),
         };
 
-        let project_args = ProjectArgs::new(assets_dir, icu_data_path);
-
-        let embedder = Self {
-            engine: std::ptr::null_mut(),
-            // `UserData` needs to be on the heap so that the Flutter Engine
-            // callbacks can safely provide a pointer to it (if it was on the
-            // stack, there is a chance that the value is dropped when the
-            // callbacks still reference it). So opt into manual memory
-            // management of this struct.
-            user_data: Box::into_raw(
-                TerminalEmbedder {
-                    terminal: TerminalWindow::new("terminal".to_string()),
-                    corruption_token: "user_data".to_string(),
-                }
-                .into(),
-            ),
-
-            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
-            start_instant: Instant::now(),
-        };
-
-        let user_data_ptr = embedder.user_data;
-
-        assert_eq!(
-            unsafe {
-                FlutterEngineRun(
-                    1,
-                    &renderer_config,
-                    &FlutterProjectArgs::from(&project_args) as *const FlutterProjectArgs,
-                    user_data_ptr as *mut std::ffi::c_void,
-                    &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
-                )
-            },
-            FlutterEngineResult_kSuccess,
-            "Engine started successfully"
-        );
-
-        let display = FlutterEngineDisplay {
-            struct_size: std::mem::size_of::<FlutterEngineDisplay>(),
-            display_id: 0,
-            single_display: true,
-            refresh_rate: FPS as f64,
-        };
-
-        assert_eq!(
-            unsafe {
-                FlutterEngineNotifyDisplayUpdate(
-                    embedder.engine,
-                    FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
-                    &display as *const FlutterEngineDisplay,
-                    1,
-                )
-            },
-            FlutterEngineResult_kSuccess,
-            "notify display update"
-        );
-
-        let s = unsafe { &*embedder.user_data };
-        let (width, height) = s.terminal.size();
-
-        let event = FlutterWindowMetricsEvent {
-            struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
-            width,
-            height,
-            pixel_ratio: 1.0,
-            left: 0,
-            top: 0,
-            physical_view_inset_top: 0.0,
-            physical_view_inset_right: 0.0,
-            physical_view_inset_bottom: 0.0,
-            physical_view_inset_left: 0.0,
-        };
-        assert_eq!(
-            unsafe {
-                FlutterEngineSendWindowMetricsEvent(
-                    embedder.engine,
-                    &event as *const FlutterWindowMetricsEvent,
-                )
-            },
-            FlutterEngineResult_kSuccess,
-            "Window metrics set successfully"
-        );
-
-        embedder
-    }
-
-    /// Returns a duration from when the Flutter Engine was started.
-    fn duration_from_start(&self) -> Duration {
-        // Always offset instants from `engine_start_time` to match the engine time base.
-        Instant::now().duration_since(self.start_instant) + self.engine_start_time
+        Self {
+            corruption_token: "user_data".to_string(),
+            terminal_window: terminal_window.clone(),
+            engine: SafeEngine::new(assets_dir, icu_data_path, embedder),
+        }
     }
 
     pub fn wait_for_input(&self) {
@@ -343,7 +244,7 @@ impl SafeEngine {
                     let flutter_pointer_event = FlutterPointerEvent {
                         struct_size: std::mem::size_of::<FlutterPointerEvent>(),
                         phase,
-                        timestamp: self.duration_from_start().as_micros() as usize,
+                        timestamp: self.engine.duration_from_start().as_micros() as usize,
                         x: column as f64,
                         y: row as f64,
                         device: 0,
@@ -362,11 +263,15 @@ impl SafeEngine {
 
                     unsafe {
                         assert_eq!(
-                            FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
+                            FlutterEngineSendPointerEvent(
+                                self.engine.engine,
+                                &flutter_pointer_event,
+                                1
+                            ),
                             FlutterEngineResult_kSuccess
                         );
                         assert_eq!(
-                            FlutterEngineScheduleFrame(self.engine),
+                            FlutterEngineScheduleFrame(self.engine.engine),
                             FlutterEngineResult_kSuccess
                         );
                     }
@@ -389,7 +294,7 @@ impl SafeEngine {
                     assert_eq!(
                         unsafe {
                             FlutterEngineSendWindowMetricsEvent(
-                                self.engine,
+                                self.engine.engine,
                                 &event as *const FlutterWindowMetricsEvent,
                             )
                         },
@@ -399,6 +304,130 @@ impl SafeEngine {
                 }
             }
         }
+    }
+}
+
+impl Embedder for TerminalEmbedderImpl {
+    fn log(&self, tag: String, message: String) {
+        // TODO: Print to the main terminal.
+        println!("{tag}: {message}");
+    }
+
+    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
+        self.outside
+            .borrow_mut()
+            .draw(width, height, buffer)
+            .unwrap()
+    }
+
+    fn size(&self) -> (usize, usize) {
+        self.outside.borrow().size()
+    }
+}
+
+impl<T: Embedder> Drop for SafeEngine<T> {
+    fn drop(&mut self) {
+        unsafe { FlutterEngineShutdown(self.engine) };
+        unsafe { Box::from_raw(self.user_data) };
+    }
+}
+
+impl<T: Embedder> SafeEngine<T> {
+    fn new(assets_dir: &str, icu_data_path: &str, embedder: T) -> Self {
+        let renderer_config = FlutterRendererConfig {
+            type_: FlutterRendererType_kSoftware,
+            __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
+                software: FlutterSoftwareRendererConfig {
+                    struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
+                    surface_present_callback: Some(software_surface_present_callback),
+                },
+            },
+        };
+
+        let project_args = ProjectArgs::new(assets_dir, icu_data_path);
+
+        let embedder = Self {
+            engine: std::ptr::null_mut(),
+            // `UserData` needs to be on the heap so that the Flutter Engine
+            // callbacks can safely provide a pointer to it (if it was on the
+            // stack, there is a chance that the value is dropped when the
+            // callbacks still reference it). So opt into manual memory
+            // management of this struct.
+            user_data: Box::into_raw(embedder.into()),
+
+            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
+            start_instant: Instant::now(),
+        };
+
+        let user_data_ptr = embedder.user_data;
+
+        assert_eq!(
+            unsafe {
+                FlutterEngineRun(
+                    1,
+                    &renderer_config,
+                    &FlutterProjectArgs::from(&project_args) as *const FlutterProjectArgs,
+                    user_data_ptr as *mut std::ffi::c_void,
+                    &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
+                )
+            },
+            FlutterEngineResult_kSuccess,
+            "Engine started successfully"
+        );
+
+        let display = FlutterEngineDisplay {
+            struct_size: std::mem::size_of::<FlutterEngineDisplay>(),
+            display_id: 0,
+            single_display: true,
+            refresh_rate: FPS as f64,
+        };
+
+        assert_eq!(
+            unsafe {
+                FlutterEngineNotifyDisplayUpdate(
+                    embedder.engine,
+                    FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
+                    &display as *const FlutterEngineDisplay,
+                    1,
+                )
+            },
+            FlutterEngineResult_kSuccess,
+            "notify display update"
+        );
+
+        let s = unsafe { &*embedder.user_data };
+        let (width, height) = s.size();
+
+        let event = FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
+            width,
+            height,
+            pixel_ratio: 1.0,
+            left: 0,
+            top: 0,
+            physical_view_inset_top: 0.0,
+            physical_view_inset_right: 0.0,
+            physical_view_inset_bottom: 0.0,
+            physical_view_inset_left: 0.0,
+        };
+        assert_eq!(
+            unsafe {
+                FlutterEngineSendWindowMetricsEvent(
+                    embedder.engine,
+                    &event as *const FlutterWindowMetricsEvent,
+                )
+            },
+            FlutterEngineResult_kSuccess,
+            "Window metrics set successfully"
+        );
+
+        embedder
+    }
+
+    /// Returns a duration from when the Flutter Engine was started.
+    fn duration_from_start(&self) -> Duration {
+        // Always offset instants from `engine_start_time` to match the engine time base.
+        Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 }
 
