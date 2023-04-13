@@ -6,7 +6,6 @@ use crossterm::event::read;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
-use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
 use std::cell::RefCell;
 use std::ffi::CStr;
@@ -232,15 +231,13 @@ impl TerminalEmbedder {
                     // The terminal renderer merges two pixels (top and bottom) into one.
                     let row = row * 2;
 
-                    let (phase, buttons) = match kind {
-                        crossterm::event::MouseEventKind::Down(mouse_button) => (
-                            FlutterPointerPhase_kDown,
-                            to_flutter_mouse_button(mouse_button),
-                        ),
-                        crossterm::event::MouseEventKind::Up(mouse_button) => (
-                            FlutterPointerPhase_kUp,
-                            to_flutter_mouse_button(mouse_button),
-                        ),
+                    let (phase, button) = match kind {
+                        crossterm::event::MouseEventKind::Down(mouse_button) => {
+                            (SafePointerPhase::Down, mouse_button.into())
+                        }
+                        crossterm::event::MouseEventKind::Up(mouse_button) => {
+                            (SafePointerPhase::Up, mouse_button.into())
+                        }
                         // Just continue as it's too annoying to log these common events.
                         crossterm::event::MouseEventKind::Drag(_) => continue,
                         crossterm::event::MouseEventKind::Moved => continue,
@@ -250,61 +247,15 @@ impl TerminalEmbedder {
                         }
                     };
 
-                    let flutter_pointer_event = FlutterPointerEvent {
-                        struct_size: std::mem::size_of::<FlutterPointerEvent>(),
-                        phase,
-                        timestamp: self.engine.duration_from_start().as_micros() as usize,
-                        x: column as f64,
-                        y: row as f64,
-                        device: 0,
-                        signal_kind: 0,
-                        scroll_delta_x: 0.0,
-                        scroll_delta_y: 0.0,
-                        device_kind: FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
-                        // This is probably a bitmask for multiple buttons so the
-                        // type doesn't match.
-                        buttons: buttons as i64,
-                        pan_x: 0.0,
-                        pan_y: 0.0,
-                        scale: 0.0,
-                        rotation: 0.0,
-                    };
-
-                    unsafe {
-                        assert_eq!(
-                            FlutterEngineSendPointerEvent(
-                                self.engine.engine,
-                                &flutter_pointer_event,
-                                1
-                            ),
-                            FlutterEngineResult_kSuccess
-                        );
-                    }
+                    self.engine
+                        .send_pointer_event(phase, column as f64, row as f64, vec![button]);
                 }
                 crossterm::event::Event::Paste(_) => todo!(),
                 crossterm::event::Event::Resize(columns, rows) => {
-                    let event = FlutterWindowMetricsEvent {
-                        struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
-                        width: columns as usize,
+                    self.engine.send_window_metrics_event(
+                        columns as usize,
                         // The terminal renderer merges two pixels (top and bottom) into one.
-                        height: (rows * 2) as usize,
-                        pixel_ratio: 1.0,
-                        left: 0,
-                        top: 0,
-                        physical_view_inset_top: 0.0,
-                        physical_view_inset_right: 0.0,
-                        physical_view_inset_bottom: 0.0,
-                        physical_view_inset_left: 0.0,
-                    };
-                    assert_eq!(
-                        unsafe {
-                            FlutterEngineSendWindowMetricsEvent(
-                                self.engine.engine,
-                                &event as *const FlutterWindowMetricsEvent,
-                            )
-                        },
-                        FlutterEngineResult_kSuccess,
-                        "Window metrics set successfully"
+                        (rows * 2) as usize,
                     );
                 }
             }
@@ -435,18 +386,81 @@ impl<T: Embedder> SafeEngine<T> {
             "Window metrics set successfully"
         );
     }
+
+    fn send_pointer_event(
+        &self,
+        phase: SafePointerPhase,
+        x: f64,
+        y: f64,
+        buttons: Vec<SafeMouseButton>,
+    ) {
+        let flutter_pointer_event = FlutterPointerEvent {
+            struct_size: std::mem::size_of::<FlutterPointerEvent>(),
+            phase: phase.into(),
+            timestamp: self.duration_from_start().as_micros() as usize,
+            x,
+            y,
+            device: 0,
+            signal_kind: 0,
+            scroll_delta_x: 0.0,
+            scroll_delta_y: 0.0,
+            device_kind: FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
+            buttons: buttons.into_iter().fold(0, |acc, button| {
+                acc | FlutterPointerMouseButtons::from(button) as i64
+            }),
+            pan_x: 0.0,
+            pan_y: 0.0,
+            scale: 0.0,
+            rotation: 0.0,
+        };
+
+        unsafe {
+            assert_eq!(
+                FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
+                FlutterEngineResult_kSuccess
+            );
+        }
+    }
 }
 
-fn to_flutter_mouse_button(button: MouseButton) -> FlutterPointerMouseButtons {
-    match button {
-        crossterm::event::MouseButton::Left => {
-            FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary
+impl From<crossterm::event::MouseButton> for SafeMouseButton {
+    fn from(value: crossterm::event::MouseButton) -> Self {
+        match value {
+            crossterm::event::MouseButton::Left => SafeMouseButton::Left,
+            crossterm::event::MouseButton::Right => SafeMouseButton::Right,
+            crossterm::event::MouseButton::Middle => SafeMouseButton::Middle,
         }
-        crossterm::event::MouseButton::Right => {
-            FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
+    }
+}
+
+enum SafePointerPhase {
+    Up,
+    Down,
+}
+
+impl From<SafePointerPhase> for FlutterPointerPhase {
+    fn from(value: SafePointerPhase) -> Self {
+        match value {
+            SafePointerPhase::Up => FlutterPointerPhase_kUp,
+            SafePointerPhase::Down => FlutterPointerPhase_kDown,
         }
-        crossterm::event::MouseButton::Middle => {
-            FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
+    }
+}
+
+enum SafeMouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+impl From<SafeMouseButton> for FlutterPointerMouseButtons {
+    fn from(value: SafeMouseButton) -> Self {
+        match value {
+            SafeMouseButton::Left => FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary,
+            SafeMouseButton::Right => {
+                FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
+            }
+            SafeMouseButton::Middle => FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle,
         }
     }
 }
