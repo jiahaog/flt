@@ -279,10 +279,6 @@ impl TerminalEmbedder {
                             ),
                             FlutterEngineResult_kSuccess
                         );
-                        assert_eq!(
-                            FlutterEngineScheduleFrame(self.engine.engine),
-                            FlutterEngineResult_kSuccess
-                        );
                     }
                 }
                 crossterm::event::Event::Paste(_) => todo!(),
