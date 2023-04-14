@@ -17,21 +17,19 @@ mod terminal_window;
 const FPS: usize = 60;
 
 pub struct TerminalEmbedder {
-    corruption_token: String,
     engine: SafeEngine<TerminalEmbedderCallbacks>,
     terminal_window: Rc<RefCell<TerminalWindow>>,
 }
 
 impl TerminalEmbedder {
     pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
-        let terminal_window = Rc::new(RefCell::new(TerminalWindow::new("terminal".to_string())));
+        let terminal_window = Rc::new(RefCell::new(TerminalWindow::new()));
 
         let callbacks = TerminalEmbedderCallbacks {
             embedder: terminal_window.clone(),
         };
 
         let embedder = Self {
-            corruption_token: "user_data".to_string(),
             terminal_window: terminal_window.clone(),
             engine: SafeEngine::new(assets_dir, icu_data_path, callbacks),
         };

@@ -23,11 +23,10 @@ use flutter_sys::Pixel;
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<(Pixel, char)>>,
-    pub corruption_token: String,
 }
 
 impl TerminalWindow {
-    pub fn new(corruption_token: String) -> Self {
+    pub fn new() -> Self {
         let mut stdout = stdout();
 
         // This causes the terminal to be output on an alternate buffer.
@@ -40,7 +39,6 @@ impl TerminalWindow {
         Self {
             stdout,
             lines: vec![],
-            corruption_token,
         }
     }
 
