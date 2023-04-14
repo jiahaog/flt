@@ -14,13 +14,14 @@ use std::time::Instant;
 use std::{ffi::CString, slice, time::Duration};
 use terminal_window::{Pixel, TerminalWindow};
 
+// mod engine;
 mod terminal_window;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 const FPS: usize = 60;
 
-extern "C" fn software_surface_present_callback(
+extern "C" fn software_surface_present_callback<T: Embedder>(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
     row_bytes: usize,
@@ -29,14 +30,7 @@ extern "C" fn software_surface_present_callback(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let user_data: &mut TerminalEmbedderImpl = unsafe { std::mem::transmute(user_data) };
-
-    let terminal_window = &mut user_data.outside;
-    assert_eq!(
-        terminal_window.borrow().corruption_token,
-        "terminal",
-        "not corrupt in software callback"
-    );
+    let user_data: &mut T = unsafe { std::mem::transmute(user_data) };
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].
@@ -180,7 +174,6 @@ pub trait Embedder {
 }
 
 pub struct TerminalEmbedder {
-    // terminal_embedder_impl: Box<TerminalEmbedderImpl>,
     corruption_token: String,
     engine: SafeEngine<TerminalEmbedderImpl>,
     terminal_window: Rc<RefCell<TerminalWindow>>,
@@ -295,7 +288,7 @@ impl<T: Embedder> SafeEngine<T> {
             __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
                 software: FlutterSoftwareRendererConfig {
                     struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
-                    surface_present_callback: Some(software_surface_present_callback),
+                    surface_present_callback: Some(software_surface_present_callback::<T>),
                 },
             },
         };
