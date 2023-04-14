@@ -82,25 +82,13 @@ impl ProjectArgs {
             icu_data_path,
         }
     }
-}
-
-impl Drop for ProjectArgs {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = CString::from_raw(self.assets_path);
-            let _ = CString::from_raw(self.icu_data_path);
-        }
-    }
-}
-
-impl From<&ProjectArgs> for FlutterProjectArgs {
-    fn from(value: &ProjectArgs) -> Self {
+    fn to_unsafe_args<T: Embedder>(&self) -> FlutterProjectArgs {
         FlutterProjectArgs {
             struct_size: std::mem::size_of::<FlutterProjectArgs>(),
-            assets_path: value.assets_path,
+            assets_path: self.assets_path,
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
-            icu_data_path: value.icu_data_path,
+            icu_data_path: self.icu_data_path,
             command_line_argc: 0,
             command_line_argv: std::ptr::null(),
             platform_message_callback: None,
@@ -127,7 +115,7 @@ impl From<&ProjectArgs> for FlutterProjectArgs {
             compute_platform_resolved_locale_callback: None,
             dart_entrypoint_argc: 0,
             dart_entrypoint_argv: std::ptr::null(),
-            log_message_callback: Some(log_message_callback),
+            log_message_callback: Some(log_message_callback::<T>),
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
             update_semantics_callback: None,
@@ -135,12 +123,21 @@ impl From<&ProjectArgs> for FlutterProjectArgs {
     }
 }
 
-extern "C" fn log_message_callback(
+impl Drop for ProjectArgs {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CString::from_raw(self.assets_path);
+            let _ = CString::from_raw(self.icu_data_path);
+        }
+    }
+}
+
+extern "C" fn log_message_callback<T: Embedder>(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut TerminalEmbedderImpl = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut T = unsafe { std::mem::transmute(user_data) };
     let tag = to_string(tag);
     let message = to_string(message);
 
@@ -316,7 +313,7 @@ impl<T: Embedder> SafeEngine<T> {
                 FlutterEngineRun(
                     1,
                     &renderer_config,
-                    &FlutterProjectArgs::from(&project_args) as *const FlutterProjectArgs,
+                    &project_args.to_unsafe_args::<T>() as *const FlutterProjectArgs,
                     user_data_ptr as *mut std::ffi::c_void,
                     &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
                 )
