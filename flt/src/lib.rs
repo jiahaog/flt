@@ -8,8 +8,6 @@ use flutter_sys::Pixel;
 use flutter_sys::SafeEngine;
 use flutter_sys::SafeMouseButton;
 use flutter_sys::SafePointerPhase;
-use std::cell::RefCell;
-use std::rc::Rc;
 use terminal_window::TerminalWindow;
 
 mod terminal_window;
@@ -18,30 +16,28 @@ const FPS: usize = 60;
 
 pub struct TerminalEmbedder {
     engine: SafeEngine<TerminalEmbedderCallbacks>,
-    terminal_window: Rc<RefCell<TerminalWindow>>,
 }
 
 impl TerminalEmbedder {
     pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
-        let terminal_window = Rc::new(RefCell::new(TerminalWindow::new()));
-
         let callbacks = TerminalEmbedderCallbacks {
-            embedder: terminal_window.clone(),
+            terminal_window: TerminalWindow::new(),
         };
 
+        let (width, height) = callbacks.terminal_window.size();
+
         let embedder = Self {
-            terminal_window: terminal_window.clone(),
             engine: SafeEngine::new(assets_dir, icu_data_path, callbacks),
         };
 
         embedder.engine.notify_display_update(FPS as f64);
 
-        let (width, height) = terminal_window.borrow().size();
         embedder.engine.send_window_metrics_event(width, height);
 
         embedder
     }
 
+    // TODO(jiahaog): Move this into TerminalWindow.
     pub fn wait_for_input(&self) {
         loop {
             match read().unwrap() {
@@ -96,7 +92,7 @@ impl TerminalEmbedder {
 }
 
 struct TerminalEmbedderCallbacks {
-    embedder: Rc<RefCell<TerminalWindow>>,
+    terminal_window: TerminalWindow,
 }
 
 impl EmbedderCallbacks for TerminalEmbedderCallbacks {
@@ -106,14 +102,7 @@ impl EmbedderCallbacks for TerminalEmbedderCallbacks {
     }
 
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
-        self.embedder
-            .borrow_mut()
-            .draw(width, height, buffer)
-            .unwrap()
-    }
-
-    fn size(&self) -> (usize, usize) {
-        self.embedder.borrow().size()
+        self.terminal_window.draw(width, height, buffer).unwrap()
     }
 }
 

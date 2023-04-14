@@ -143,10 +143,6 @@ pub trait EmbedderCallbacks {
     fn log(&self, tag: String, message: String);
 
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
-
-    // TODO(jiahaog): Remove. The Terminal Embedder should have methods to set
-    // the size on the engine.
-    fn size(&self) -> (usize, usize);
 }
 
 pub struct SafeEngine<T: EmbedderCallbacks> {
