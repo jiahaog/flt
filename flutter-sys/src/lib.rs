@@ -7,7 +7,7 @@ use std::ffi::CStr;
 use std::time::Instant;
 use std::{ffi::CString, slice, time::Duration};
 
-extern "C" fn software_surface_present_callback<T: Embedder>(
+extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
     row_bytes: usize,
@@ -67,7 +67,7 @@ impl ProjectArgs {
             icu_data_path,
         }
     }
-    fn to_unsafe_args<T: Embedder>(&self) -> FlutterProjectArgs {
+    fn to_unsafe_args<T: EmbedderCallbacks>(&self) -> FlutterProjectArgs {
         FlutterProjectArgs {
             struct_size: std::mem::size_of::<FlutterProjectArgs>(),
             assets_path: self.assets_path,
@@ -117,7 +117,7 @@ impl Drop for ProjectArgs {
     }
 }
 
-extern "C" fn log_message_callback<T: Embedder>(
+extern "C" fn log_message_callback<T: EmbedderCallbacks>(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
@@ -136,7 +136,7 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     message.to_str().unwrap().to_string()
 }
 
-pub trait Embedder {
+pub trait EmbedderCallbacks {
     fn log(&self, tag: String, message: String);
 
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
@@ -146,22 +146,22 @@ pub trait Embedder {
     fn size(&self) -> (usize, usize);
 }
 
-pub struct SafeEngine<T: Embedder> {
+pub struct SafeEngine<T: EmbedderCallbacks> {
     engine: FlutterEngine,
     user_data: *mut T,
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
-impl<T: Embedder> Drop for SafeEngine<T> {
+impl<T: EmbedderCallbacks> Drop for SafeEngine<T> {
     fn drop(&mut self) {
         unsafe { FlutterEngineShutdown(self.engine) };
         unsafe { Box::from_raw(self.user_data) };
     }
 }
 
-impl<T: Embedder> SafeEngine<T> {
-    pub fn new(assets_dir: &str, icu_data_path: &str, embedder: T) -> Self {
+impl<T: EmbedderCallbacks> SafeEngine<T> {
+    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Self {
         let renderer_config = FlutterRendererConfig {
             type_: FlutterRendererType_kSoftware,
             __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
@@ -181,7 +181,7 @@ impl<T: Embedder> SafeEngine<T> {
             // stack, there is a chance that the value is dropped when the
             // callbacks still reference it). So opt into manual memory
             // management of this struct.
-            user_data: Box::into_raw(embedder.into()),
+            user_data: Box::into_raw(callbacks.into()),
 
             engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
             start_instant: Instant::now(),

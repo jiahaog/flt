@@ -3,7 +3,7 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEvent;
-use flutter_sys::Embedder;
+use flutter_sys::EmbedderCallbacks;
 use flutter_sys::Pixel;
 use flutter_sys::SafeEngine;
 use flutter_sys::SafeMouseButton;
@@ -16,13 +16,9 @@ mod terminal_window;
 
 const FPS: usize = 60;
 
-struct TerminalEmbedderImpl {
-    outside: Rc<RefCell<TerminalWindow>>,
-}
-
 pub struct TerminalEmbedder {
     corruption_token: String,
-    engine: SafeEngine<TerminalEmbedderImpl>,
+    engine: SafeEngine<TerminalEmbedderCallbacks>,
     terminal_window: Rc<RefCell<TerminalWindow>>,
 }
 
@@ -30,24 +26,22 @@ impl TerminalEmbedder {
     pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
         let terminal_window = Rc::new(RefCell::new(TerminalWindow::new("terminal".to_string())));
 
-        let embedder = TerminalEmbedderImpl {
-            outside: terminal_window.clone(),
+        let callbacks = TerminalEmbedderCallbacks {
+            embedder: terminal_window.clone(),
         };
 
-        let terminal_embedder = Self {
+        let embedder = Self {
             corruption_token: "user_data".to_string(),
             terminal_window: terminal_window.clone(),
-            engine: SafeEngine::new(assets_dir, icu_data_path, embedder),
+            engine: SafeEngine::new(assets_dir, icu_data_path, callbacks),
         };
 
-        terminal_embedder.engine.notify_display_update(FPS as f64);
+        embedder.engine.notify_display_update(FPS as f64);
 
         let (width, height) = terminal_window.borrow().size();
-        terminal_embedder
-            .engine
-            .send_window_metrics_event(width, height);
+        embedder.engine.send_window_metrics_event(width, height);
 
-        terminal_embedder
+        embedder
     }
 
     pub fn wait_for_input(&self) {
@@ -103,21 +97,25 @@ impl TerminalEmbedder {
     }
 }
 
-impl Embedder for TerminalEmbedderImpl {
+struct TerminalEmbedderCallbacks {
+    embedder: Rc<RefCell<TerminalWindow>>,
+}
+
+impl EmbedderCallbacks for TerminalEmbedderCallbacks {
     fn log(&self, tag: String, message: String) {
         // TODO: Print to the main terminal.
         println!("{tag}: {message}");
     }
 
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
-        self.outside
+        self.embedder
             .borrow_mut()
             .draw(width, height, buffer)
             .unwrap()
     }
 
     fn size(&self) -> (usize, usize) {
-        self.outside.borrow().size()
+        self.embedder.borrow().size()
     }
 }
 
