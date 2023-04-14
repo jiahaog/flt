@@ -3,15 +3,15 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEvent;
-use engine::Embedder;
-use engine::Pixel;
-use engine::SafeEngine;
-use engine::SafePointerPhase;
+use flutter_sys::Embedder;
+use flutter_sys::Pixel;
+use flutter_sys::SafeEngine;
+use flutter_sys::SafeMouseButton;
+use flutter_sys::SafePointerPhase;
 use std::cell::RefCell;
 use std::rc::Rc;
 use terminal_window::TerminalWindow;
 
-mod engine;
 mod terminal_window;
 
 const FPS: usize = 60;
@@ -73,10 +73,10 @@ impl TerminalEmbedder {
 
                     let (phase, button) = match kind {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
-                            (SafePointerPhase::Down, mouse_button.into())
+                            (SafePointerPhase::Down, to_mouse_button(mouse_button))
                         }
                         crossterm::event::MouseEventKind::Up(mouse_button) => {
-                            (SafePointerPhase::Up, mouse_button.into())
+                            (SafePointerPhase::Up, to_mouse_button(mouse_button))
                         }
                         // Just continue as it's too annoying to log these common events.
                         crossterm::event::MouseEventKind::Drag(_) => continue,
@@ -118,5 +118,13 @@ impl Embedder for TerminalEmbedderImpl {
 
     fn size(&self) -> (usize, usize) {
         self.outside.borrow().size()
+    }
+}
+
+fn to_mouse_button(value: crossterm::event::MouseButton) -> SafeMouseButton {
+    match value {
+        crossterm::event::MouseButton::Left => SafeMouseButton::Left,
+        crossterm::event::MouseButton::Right => SafeMouseButton::Right,
+        crossterm::event::MouseButton::Middle => SafeMouseButton::Middle,
     }
 }

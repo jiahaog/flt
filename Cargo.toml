@@ -1,15 +1,6 @@
-[package]
-name = "flterminal"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-bmp = "0.5.0"
-clap = { version = "4.2.1", features = ["derive"] }
-crossterm = "0.26.1"
-
-
-[build-dependencies]
-bindgen = "0.64.0"
+members = [
+    "flt",
+    "flutter-sys",
+]

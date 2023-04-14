@@ -18,7 +18,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    let engine_ref_path = Path::new("third_party/flutter/bin/internal/engine.version");
+    let engine_ref_path = Path::new("../third_party/flutter/bin/internal/engine.version");
 
     // Rerun this script when these files change.
     println!("cargo:rerun-if-changed=build.rs");

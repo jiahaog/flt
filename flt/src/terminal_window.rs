@@ -7,7 +7,6 @@ use std::io::Stdout;
 use std::io::Write;
 use std::iter::zip;
 
-use crate::engine::Pixel;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
@@ -19,6 +18,7 @@ use crossterm::terminal::{
 use crossterm::ErrorKind;
 use crossterm::ExecutableCommand;
 use crossterm::QueueableCommand;
+use flutter_sys::Pixel;
 
 pub struct TerminalWindow {
     stdout: Stdout,
@@ -54,19 +54,19 @@ impl TerminalWindow {
     }
 }
 
-impl Pixel {
-    fn is_lit(&self) -> bool {
-        if self.a == 0 {
-            return false;
-        }
-
-        return self.r != 0 && self.g != 0 && self.b != 0;
+fn is_lit(pixel: &Pixel) -> bool {
+    if pixel.a == 0 {
+        return false;
     }
+
+    return pixel.r != 0 && pixel.g != 0 && pixel.b != 0;
 }
 
-impl From<Pixel> for Color {
-    fn from(Pixel { r, g, b, a: _ }: Pixel) -> Self {
-        Color::Rgb { r, g, b }
+fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
+    Color::Rgb {
+        r: *r,
+        g: *g,
+        b: *b,
     }
 }
 
@@ -125,7 +125,7 @@ impl TerminalWindow {
                 if i % width == 0 {
                     acc.push(vec![]);
                 }
-                let character = match (top.is_lit(), bottom.is_lit()) {
+                let character = match (is_lit(&top), is_lit(&bottom)) {
                     // Just use the top for the color for now.
                     (true, true) => (top, BLOCK_FULL),
                     (true, false) => (top, BLOCK_UPPER),
@@ -161,7 +161,7 @@ impl TerminalWindow {
                 self.stdout.queue(Clear(ClearType::CurrentLine))?;
 
                 for (pixel, char) in current {
-                    let color: Color = Color::from(*pixel);
+                    let color: Color = to_color(pixel);
 
                     self.stdout
                         .queue(PrintStyledContent(char.to_string().with(color)))?;

@@ -295,16 +295,6 @@ impl<T: Embedder> SafeEngine<T> {
     }
 }
 
-impl From<crossterm::event::MouseButton> for SafeMouseButton {
-    fn from(value: crossterm::event::MouseButton) -> Self {
-        match value {
-            crossterm::event::MouseButton::Left => SafeMouseButton::Left,
-            crossterm::event::MouseButton::Right => SafeMouseButton::Right,
-            crossterm::event::MouseButton::Middle => SafeMouseButton::Middle,
-        }
-    }
-}
-
 pub enum SafePointerPhase {
     Up,
     Down,
