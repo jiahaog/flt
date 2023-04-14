@@ -7,14 +7,15 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEvent;
+use engine::Pixel;
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{ffi::CString, slice, time::Duration};
-use terminal_window::{Pixel, TerminalWindow};
+use terminal_window::TerminalWindow;
 
-// mod engine;
+mod engine;
 mod terminal_window;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

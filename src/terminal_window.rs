@@ -7,6 +7,7 @@ use std::io::Stdout;
 use std::io::Write;
 use std::iter::zip;
 
+use crate::engine::Pixel;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
@@ -53,23 +54,7 @@ impl TerminalWindow {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Pixel {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
 impl Pixel {
-    pub fn zero() -> Self {
-        Pixel {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        }
-    }
     fn is_lit(&self) -> bool {
         if self.a == 0 {
             return false;
