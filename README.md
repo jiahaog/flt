@@ -1,5 +1,5 @@
-# flterminal
+# Flutter Terminal
 
 ```sh
-git clone --recurse-submodules git@github.com:jiahaog/flterminal.git
+git clone --recurse-submodules git@github.com:jiahaog/flt.git
 ```
