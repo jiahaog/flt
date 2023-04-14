@@ -1,7 +1,10 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+mod sys {
+    #![allow(unused)]
+    #![allow(non_upper_case_globals)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_snake_case)]
+    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
 
 use std::ffi::CStr;
 use std::time::Instant;
@@ -67,9 +70,9 @@ impl ProjectArgs {
             icu_data_path,
         }
     }
-    fn to_unsafe_args<T: EmbedderCallbacks>(&self) -> FlutterProjectArgs {
-        FlutterProjectArgs {
-            struct_size: std::mem::size_of::<FlutterProjectArgs>(),
+    fn to_unsafe_args<T: EmbedderCallbacks>(&self) -> sys::FlutterProjectArgs {
+        sys::FlutterProjectArgs {
+            struct_size: std::mem::size_of::<sys::FlutterProjectArgs>(),
             assets_path: self.assets_path,
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
@@ -147,7 +150,7 @@ pub trait EmbedderCallbacks {
 }
 
 pub struct SafeEngine<T: EmbedderCallbacks> {
-    engine: FlutterEngine,
+    engine: sys::FlutterEngine,
     user_data: *mut T,
     engine_start_time: Duration,
     start_instant: Instant,
@@ -155,18 +158,18 @@ pub struct SafeEngine<T: EmbedderCallbacks> {
 
 impl<T: EmbedderCallbacks> Drop for SafeEngine<T> {
     fn drop(&mut self) {
-        unsafe { FlutterEngineShutdown(self.engine) };
+        unsafe { sys::FlutterEngineShutdown(self.engine) };
         unsafe { Box::from_raw(self.user_data) };
     }
 }
 
 impl<T: EmbedderCallbacks> SafeEngine<T> {
     pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Self {
-        let renderer_config = FlutterRendererConfig {
-            type_: FlutterRendererType_kSoftware,
-            __bindgen_anon_1: FlutterRendererConfig__bindgen_ty_1 {
-                software: FlutterSoftwareRendererConfig {
-                    struct_size: std::mem::size_of::<FlutterSoftwareRendererConfig>(),
+        let renderer_config = sys::FlutterRendererConfig {
+            type_: sys::FlutterRendererType_kSoftware,
+            __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
+                software: sys::FlutterSoftwareRendererConfig {
+                    struct_size: std::mem::size_of::<sys::FlutterSoftwareRendererConfig>(),
                     surface_present_callback: Some(software_surface_present_callback::<T>),
                 },
             },
@@ -183,7 +186,7 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
             // management of this struct.
             user_data: Box::into_raw(callbacks.into()),
 
-            engine_start_time: Duration::from_nanos(unsafe { FlutterEngineGetCurrentTime() }),
+            engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
             start_instant: Instant::now(),
         };
 
@@ -191,15 +194,15 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
 
         assert_eq!(
             unsafe {
-                FlutterEngineRun(
+                sys::FlutterEngineRun(
                     1,
                     &renderer_config,
-                    &project_args.to_unsafe_args::<T>() as *const FlutterProjectArgs,
+                    &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
                     user_data_ptr as *mut std::ffi::c_void,
-                    &embedder.engine as *const FlutterEngine as *mut FlutterEngine,
+                    &embedder.engine as *const sys::FlutterEngine as *mut sys::FlutterEngine,
                 )
             },
-            FlutterEngineResult_kSuccess,
+            sys::FlutterEngineResult_kSuccess,
             "Engine started successfully"
         );
 
@@ -213,8 +216,8 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
     }
 
     pub fn notify_display_update(&self, refresh_rate: f64) {
-        let display = FlutterEngineDisplay {
-            struct_size: std::mem::size_of::<FlutterEngineDisplay>(),
+        let display = sys::FlutterEngineDisplay {
+            struct_size: std::mem::size_of::<sys::FlutterEngineDisplay>(),
             display_id: 0,
             single_display: true,
             refresh_rate,
@@ -222,21 +225,21 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
 
         assert_eq!(
             unsafe {
-                FlutterEngineNotifyDisplayUpdate(
+                sys::FlutterEngineNotifyDisplayUpdate(
                     self.engine,
-                    FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
-                    &display as *const FlutterEngineDisplay,
+                    sys::FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
+                    &display as *const sys::FlutterEngineDisplay,
                     1,
                 )
             },
-            FlutterEngineResult_kSuccess,
+            sys::FlutterEngineResult_kSuccess,
             "notify display update"
         );
     }
 
     pub fn send_window_metrics_event(&self, width: usize, height: usize) {
-        let event = FlutterWindowMetricsEvent {
-            struct_size: std::mem::size_of::<FlutterWindowMetricsEvent>(),
+        let event = sys::FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<sys::FlutterWindowMetricsEvent>(),
             width,
             height,
             pixel_ratio: 1.0,
@@ -249,12 +252,12 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
         };
         assert_eq!(
             unsafe {
-                FlutterEngineSendWindowMetricsEvent(
+                sys::FlutterEngineSendWindowMetricsEvent(
                     self.engine,
-                    &event as *const FlutterWindowMetricsEvent,
+                    &event as *const sys::FlutterWindowMetricsEvent,
                 )
             },
-            FlutterEngineResult_kSuccess,
+            sys::FlutterEngineResult_kSuccess,
             "Window metrics set successfully"
         );
     }
@@ -266,8 +269,8 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
         y: f64,
         buttons: Vec<SafeMouseButton>,
     ) {
-        let flutter_pointer_event = FlutterPointerEvent {
-            struct_size: std::mem::size_of::<FlutterPointerEvent>(),
+        let flutter_pointer_event = sys::FlutterPointerEvent {
+            struct_size: std::mem::size_of::<sys::FlutterPointerEvent>(),
             phase: phase.into(),
             timestamp: self.duration_from_start().as_micros() as usize,
             x,
@@ -276,9 +279,9 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
             signal_kind: 0,
             scroll_delta_x: 0.0,
             scroll_delta_y: 0.0,
-            device_kind: FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
+            device_kind: sys::FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
             buttons: buttons.into_iter().fold(0, |acc, button| {
-                acc | FlutterPointerMouseButtons::from(button) as i64
+                acc | sys::FlutterPointerMouseButtons::from(button) as i64
             }),
             pan_x: 0.0,
             pan_y: 0.0,
@@ -288,8 +291,8 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
 
         unsafe {
             assert_eq!(
-                FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
-                FlutterEngineResult_kSuccess
+                sys::FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
+                sys::FlutterEngineResult_kSuccess
             );
         }
     }
@@ -300,11 +303,11 @@ pub enum SafePointerPhase {
     Down,
 }
 
-impl From<SafePointerPhase> for FlutterPointerPhase {
+impl From<SafePointerPhase> for sys::FlutterPointerPhase {
     fn from(value: SafePointerPhase) -> Self {
         match value {
-            SafePointerPhase::Up => FlutterPointerPhase_kUp,
-            SafePointerPhase::Down => FlutterPointerPhase_kDown,
+            SafePointerPhase::Up => sys::FlutterPointerPhase_kUp,
+            SafePointerPhase::Down => sys::FlutterPointerPhase_kDown,
         }
     }
 }
@@ -315,14 +318,18 @@ pub enum SafeMouseButton {
     Middle,
 }
 
-impl From<SafeMouseButton> for FlutterPointerMouseButtons {
+impl From<SafeMouseButton> for sys::FlutterPointerMouseButtons {
     fn from(value: SafeMouseButton) -> Self {
         match value {
-            SafeMouseButton::Left => FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary,
-            SafeMouseButton::Right => {
-                FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
+            SafeMouseButton::Left => {
+                sys::FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary
             }
-            SafeMouseButton::Middle => FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle,
+            SafeMouseButton::Right => {
+                sys::FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
+            }
+            SafeMouseButton::Middle => {
+                sys::FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
+            }
         }
     }
 }
