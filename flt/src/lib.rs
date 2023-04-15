@@ -32,7 +32,6 @@ impl TerminalEmbedder {
         embedder
     }
 
-    // TODO(jiahaog): Move this into TerminalWindow.
     pub fn wait_for_input(&self) {
         loop {
             match read().unwrap() {
