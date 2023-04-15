@@ -2,22 +2,16 @@
 //!
 //! This should be the only file in this crate which depends on [crossterm].
 
-use std::io::stdout;
-use std::io::Stdout;
-use std::io::Write;
+use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableMouseCapture;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::style::{Color, PrintStyledContent, Stylize};
-use crossterm::terminal::size;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use crossterm::ErrorKind;
-use crossterm::ExecutableCommand;
-use crossterm::QueueableCommand;
+use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
 
 pub struct TerminalWindow {

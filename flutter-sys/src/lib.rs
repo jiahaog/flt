@@ -6,9 +6,9 @@ mod sys {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-use std::ffi::CStr;
-use std::time::Instant;
-use std::{ffi::CString, slice, time::Duration};
+use std::ffi::{CStr, CString};
+use std::slice;
+use std::time::{Duration, Instant};
 
 extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     user_data: *mut std::os::raw::c_void,

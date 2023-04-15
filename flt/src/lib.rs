@@ -1,13 +1,5 @@
-use crossterm::event::read;
-use crossterm::event::KeyCode;
-use crossterm::event::KeyEvent;
-use crossterm::event::KeyModifiers;
-use crossterm::event::MouseEvent;
-use flutter_sys::EmbedderCallbacks;
-use flutter_sys::Pixel;
-use flutter_sys::SafeEngine;
-use flutter_sys::SafeMouseButton;
-use flutter_sys::SafePointerPhase;
+use crossterm::event::{read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use flutter_sys::{EmbedderCallbacks, Pixel, SafeEngine, SafeMouseButton, SafePointerPhase};
 use terminal_window::TerminalWindow;
 
 mod terminal_window;
