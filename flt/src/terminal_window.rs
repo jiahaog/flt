@@ -179,7 +179,6 @@ impl TerminalWindow {
         for (i, (prev, current)) in zip(&self.lines, &lines).enumerate() {
             if !do_vecs_match(prev, current) {
                 self.stdout.queue(MoveTo(0, i as u16))?;
-                self.stdout.queue(Clear(ClearType::CurrentLine))?;
 
                 for TerminalChar {
                     foreground,
