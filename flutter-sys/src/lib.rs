@@ -233,12 +233,12 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
         );
     }
 
-    pub fn send_window_metrics_event(&self, width: usize, height: usize) {
+    pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
         let event = sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<sys::FlutterWindowMetricsEvent>(),
             width,
             height,
-            pixel_ratio: 1.0,
+            pixel_ratio,
             left: 0,
             top: 0,
             physical_view_inset_top: 0.0,

@@ -13,6 +13,7 @@ use terminal_window::TerminalWindow;
 mod terminal_window;
 
 const FPS: usize = 60;
+const PIXEL_RATIO: f64 = 0.7;
 
 pub struct TerminalEmbedder {
     engine: SafeEngine<TerminalEmbedderCallbacks>,
@@ -32,7 +33,9 @@ impl TerminalEmbedder {
 
         embedder.engine.notify_display_update(FPS as f64);
 
-        embedder.engine.send_window_metrics_event(width, height);
+        embedder
+            .engine
+            .send_window_metrics_event(width, height, PIXEL_RATIO);
 
         embedder
     }
@@ -84,6 +87,7 @@ impl TerminalEmbedder {
                         columns as usize,
                         // The terminal renderer merges two pixels (top and bottom) into one.
                         (rows * 2) as usize,
+                        PIXEL_RATIO,
                     );
                 }
             }
