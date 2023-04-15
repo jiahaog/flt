@@ -16,14 +16,13 @@ use flutter_sys::Pixel;
 
 pub struct TerminalWindow {
     stdout: Stdout,
-    lines: Vec<Vec<TerminalChar>>,
+    lines: Vec<Vec<TerminalCell>>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-struct TerminalChar {
-    foreground: Color,
-    background: Option<Color>,
-    char: char,
+struct TerminalCell {
+    top: Color,
+    bottom: Color,
 }
 
 impl TerminalWindow {
@@ -51,14 +50,6 @@ impl TerminalWindow {
             (height * 2) as usize,
         )
     }
-}
-
-fn is_lit(pixel: &Pixel) -> bool {
-    if pixel.a == 0 {
-        return false;
-    }
-
-    return pixel.r != 0 && pixel.g != 0 && pixel.b != 0;
 }
 
 fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
@@ -124,32 +115,13 @@ impl TerminalWindow {
                 if i % width == 0 {
                     acc.push(vec![]);
                 }
-                let character = match (is_lit(&top), is_lit(&bottom)) {
-                    (true, true) => TerminalChar {
-                        // Upper is the foreground, lower is the background.
-                        foreground: to_color(&top),
-                        background: Some(to_color(&bottom)),
-                        char: BLOCK_UPPER,
-                    },
-                    (true, false) => TerminalChar {
-                        foreground: to_color(&top),
-                        background: None,
-                        char: BLOCK_UPPER,
-                    },
-                    (false, true) => TerminalChar {
-                        foreground: to_color(&bottom),
-                        background: None,
-                        char: BLOCK_LOWER,
-                    },
-                    (false, false) => TerminalChar {
-                        foreground: to_color(&Pixel::zero()),
-                        background: None,
-                        char: BLOCK_EMPTY,
-                    },
+                let cell = TerminalCell {
+                    top: to_color(&top),
+                    bottom: to_color(&bottom),
                 };
 
                 let current_line = acc.last_mut().unwrap();
-                current_line.push(character);
+                current_line.push(cell);
 
                 acc
             });
@@ -174,18 +146,10 @@ impl TerminalWindow {
             if !do_vecs_match(prev, current) {
                 self.stdout.queue(MoveTo(0, i as u16))?;
 
-                for TerminalChar {
-                    foreground,
-                    background,
-                    char,
-                } in current
-                {
-                    let style = char.to_string().with(*foreground);
-                    let style = match background {
-                        Some(background) => style.on(*background),
-                        None => style,
-                    };
-                    self.stdout.queue(PrintStyledContent(style))?;
+                for TerminalCell { top, bottom } in current {
+                    self.stdout.queue(PrintStyledContent(
+                        BLOCK_UPPER.to_string().with(*top).on(*bottom),
+                    ))?;
                 }
             }
         }
@@ -203,9 +167,7 @@ fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {
     matching == a.len() && matching == b.len()
 }
 
-const BLOCK_LOWER: char = '▄';
 const BLOCK_UPPER: char = '▀';
-const BLOCK_EMPTY: char = ' ';
 
 impl From<ErrorKind> for Error {
     fn from(value: ErrorKind) -> Self {
