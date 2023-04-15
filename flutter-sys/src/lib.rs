@@ -10,6 +10,8 @@ use std::ffi::{CStr, CString};
 use std::slice;
 use std::time::{Duration, Instant};
 
+use sys::{FlutterPointerPhase_kHover, FlutterPointerSignalKind_kFlutterPointerSignalKindScroll};
+
 extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
@@ -263,22 +265,26 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
         phase: SafePointerPhase,
         x: f64,
         y: f64,
+        signal_kind: SafeSignalKind,
+        scroll_delta_y: f64,
         buttons: Vec<SafeMouseButton>,
     ) {
         let flutter_pointer_event = sys::FlutterPointerEvent {
             struct_size: std::mem::size_of::<sys::FlutterPointerEvent>(),
             phase: phase.into(),
+            // phase: FlutterPointerPhase_kHover,
             timestamp: self.duration_from_start().as_micros() as usize,
             x,
             y,
             device: 0,
-            signal_kind: 0,
+            signal_kind: signal_kind.into(),
             scroll_delta_x: 0.0,
-            scroll_delta_y: 0.0,
+            scroll_delta_y,
             device_kind: sys::FlutterPointerDeviceKind_kFlutterPointerDeviceKindMouse,
             buttons: buttons.into_iter().fold(0, |acc, button| {
                 acc | sys::FlutterPointerMouseButtons::from(button) as i64
             }),
+            // buttons: sys::FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle as i64,
             pan_x: 0.0,
             pan_y: 0.0,
             scale: 0.0,
@@ -297,6 +303,21 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
 pub enum SafePointerPhase {
     Up,
     Down,
+    Hover,
+}
+
+pub enum SafeSignalKind {
+    None,
+    Scroll,
+}
+
+impl From<SafeSignalKind> for sys::FlutterPointerSignalKind {
+    fn from(value: SafeSignalKind) -> Self {
+        match value {
+            SafeSignalKind::None => sys::FlutterPointerSignalKind_kFlutterPointerSignalKindNone,
+            SafeSignalKind::Scroll => sys::FlutterPointerSignalKind_kFlutterPointerSignalKindScroll,
+        }
+    }
 }
 
 impl From<SafePointerPhase> for sys::FlutterPointerPhase {
@@ -304,6 +325,7 @@ impl From<SafePointerPhase> for sys::FlutterPointerPhase {
         match value {
             SafePointerPhase::Up => sys::FlutterPointerPhase_kUp,
             SafePointerPhase::Down => sys::FlutterPointerPhase_kDown,
+            SafePointerPhase::Hover => sys::FlutterPointerPhase_kHover,
         }
     }
 }

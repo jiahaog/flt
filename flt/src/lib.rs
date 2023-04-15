@@ -1,11 +1,16 @@
 use crossterm::event::{read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
-use flutter_sys::{EmbedderCallbacks, Pixel, SafeEngine, SafeMouseButton, SafePointerPhase};
+use flutter_sys::{
+    EmbedderCallbacks, Pixel, SafeEngine, SafeMouseButton, SafePointerPhase, SafeSignalKind,
+};
 use terminal_window::TerminalWindow;
 
 mod terminal_window;
 
 const FPS: usize = 60;
 const PIXEL_RATIO: f64 = 0.7;
+// Number of pixel for each scroll event as the terminal doesn't tell us how
+// many lines the mouse has scrolled by.
+const SCROLL_DELTA: f64 = 10.0;
 
 pub struct TerminalEmbedder {
     engine: SafeEngine<TerminalEmbedderCallbacks>,
@@ -53,24 +58,61 @@ impl TerminalEmbedder {
                     // The terminal renderer merges two pixels (top and bottom) into one.
                     let row = row * 2;
 
-                    let (phase, button) = match kind {
+                    match kind {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
-                            (SafePointerPhase::Down, to_mouse_button(mouse_button))
+                            // (SafePointerPhase::Down, to_mouse_button(mouse_button))
+                            self.engine.send_pointer_event(
+                                SafePointerPhase::Down,
+                                column as f64,
+                                row as f64,
+                                SafeSignalKind::None,
+                                0.0,
+                                vec![to_mouse_button(mouse_button)],
+                            );
                         }
                         crossterm::event::MouseEventKind::Up(mouse_button) => {
-                            (SafePointerPhase::Up, to_mouse_button(mouse_button))
+                            self.engine.send_pointer_event(
+                                SafePointerPhase::Up,
+                                column as f64,
+                                row as f64,
+                                SafeSignalKind::None,
+                                0.0,
+                                vec![to_mouse_button(mouse_button)],
+                            );
                         }
                         // Just continue as it's too annoying to log these common events.
                         crossterm::event::MouseEventKind::Drag(_) => continue,
-                        crossterm::event::MouseEventKind::Moved => continue,
-                        kind => {
-                            println!("ignoring event {kind:?}");
-                            continue;
+                        crossterm::event::MouseEventKind::Moved => {
+                            self.engine.send_pointer_event(
+                                SafePointerPhase::Hover,
+                                column as f64,
+                                row as f64,
+                                SafeSignalKind::None,
+                                0.0,
+                                vec![],
+                            );
+                        }
+                        crossterm::event::MouseEventKind::ScrollUp => {
+                            self.engine.send_pointer_event(
+                                SafePointerPhase::Up,
+                                column as f64,
+                                row as f64,
+                                SafeSignalKind::Scroll,
+                                -SCROLL_DELTA,
+                                vec![],
+                            );
+                        }
+                        crossterm::event::MouseEventKind::ScrollDown => {
+                            self.engine.send_pointer_event(
+                                SafePointerPhase::Down,
+                                column as f64,
+                                row as f64,
+                                SafeSignalKind::Scroll,
+                                SCROLL_DELTA,
+                                vec![],
+                            );
                         }
                     };
-
-                    self.engine
-                        .send_pointer_event(phase, column as f64, row as f64, vec![button]);
                 }
                 crossterm::event::Event::Paste(_) => todo!(),
                 crossterm::event::Event::Resize(columns, rows) => {
