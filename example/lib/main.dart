@@ -59,7 +59,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  final items = List<String>.generate(10000, (i) => 'Item $i');
+  final items = List<String>.generate(100, (i) => 'Item $i');
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,7 +81,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           if (index == 1) {
             return ListTile(
               title: Text(
-                'FAB pushed times: $_counter',
+                'FAB times: $_counter',
               ),
             );
           }
