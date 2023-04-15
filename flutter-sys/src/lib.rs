@@ -10,8 +10,6 @@ use std::ffi::{CStr, CString};
 use std::slice;
 use std::time::{Duration, Instant};
 
-use sys::{FlutterPointerPhase_kHover, FlutterPointerSignalKind_kFlutterPointerSignalKindScroll};
-
 extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
@@ -57,12 +55,12 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     return true;
 }
 
-struct ProjectArgs {
+struct FlutterProjectArgs {
     assets_path: *mut i8,
     icu_data_path: *mut i8,
 }
 
-impl ProjectArgs {
+impl FlutterProjectArgs {
     fn new(assets_path: &str, icu_data_path: &str) -> Self {
         let assets_path = CString::new(assets_path).unwrap().into_raw();
         let icu_data_path = CString::new(icu_data_path).unwrap().into_raw();
@@ -113,7 +111,7 @@ impl ProjectArgs {
     }
 }
 
-impl Drop for ProjectArgs {
+impl Drop for FlutterProjectArgs {
     fn drop(&mut self) {
         unsafe {
             let _ = CString::from_raw(self.assets_path);
@@ -147,21 +145,21 @@ pub trait EmbedderCallbacks {
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>);
 }
 
-pub struct SafeEngine<T: EmbedderCallbacks> {
+pub struct FlutterEngine<T: EmbedderCallbacks> {
     engine: sys::FlutterEngine,
     user_data: *mut T,
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
-impl<T: EmbedderCallbacks> Drop for SafeEngine<T> {
+impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
     fn drop(&mut self) {
         unsafe { sys::FlutterEngineShutdown(self.engine) };
         unsafe { Box::from_raw(self.user_data) };
     }
 }
 
-impl<T: EmbedderCallbacks> SafeEngine<T> {
+impl<T: EmbedderCallbacks> FlutterEngine<T> {
     pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Self {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
@@ -173,7 +171,7 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
             },
         };
 
-        let project_args = ProjectArgs::new(assets_dir, icu_data_path);
+        let project_args = FlutterProjectArgs::new(assets_dir, icu_data_path);
 
         let embedder = Self {
             engine: std::ptr::null_mut(),
@@ -262,12 +260,12 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
 
     pub fn send_pointer_event(
         &self,
-        phase: SafePointerPhase,
+        phase: FlutterPointerPhase,
         x: f64,
         y: f64,
-        signal_kind: SafeSignalKind,
+        signal_kind: FlutterPointerSignalKind,
         scroll_delta_y: f64,
-        buttons: Vec<SafeMouseButton>,
+        buttons: Vec<FlutterPointerMouseButton>,
     ) {
         let flutter_pointer_event = sys::FlutterPointerEvent {
             struct_size: std::mem::size_of::<sys::FlutterPointerEvent>(),
@@ -300,52 +298,56 @@ impl<T: EmbedderCallbacks> SafeEngine<T> {
     }
 }
 
-pub enum SafePointerPhase {
+pub enum FlutterPointerPhase {
     Up,
     Down,
     Hover,
 }
 
-pub enum SafeSignalKind {
+impl From<FlutterPointerPhase> for sys::FlutterPointerPhase {
+    fn from(value: FlutterPointerPhase) -> Self {
+        match value {
+            FlutterPointerPhase::Up => sys::FlutterPointerPhase_kUp,
+            FlutterPointerPhase::Down => sys::FlutterPointerPhase_kDown,
+            FlutterPointerPhase::Hover => sys::FlutterPointerPhase_kHover,
+        }
+    }
+}
+
+pub enum FlutterPointerSignalKind {
     None,
     Scroll,
 }
 
-impl From<SafeSignalKind> for sys::FlutterPointerSignalKind {
-    fn from(value: SafeSignalKind) -> Self {
+impl From<FlutterPointerSignalKind> for sys::FlutterPointerSignalKind {
+    fn from(value: FlutterPointerSignalKind) -> Self {
         match value {
-            SafeSignalKind::None => sys::FlutterPointerSignalKind_kFlutterPointerSignalKindNone,
-            SafeSignalKind::Scroll => sys::FlutterPointerSignalKind_kFlutterPointerSignalKindScroll,
+            FlutterPointerSignalKind::None => {
+                sys::FlutterPointerSignalKind_kFlutterPointerSignalKindNone
+            }
+            FlutterPointerSignalKind::Scroll => {
+                sys::FlutterPointerSignalKind_kFlutterPointerSignalKindScroll
+            }
         }
     }
 }
 
-impl From<SafePointerPhase> for sys::FlutterPointerPhase {
-    fn from(value: SafePointerPhase) -> Self {
-        match value {
-            SafePointerPhase::Up => sys::FlutterPointerPhase_kUp,
-            SafePointerPhase::Down => sys::FlutterPointerPhase_kDown,
-            SafePointerPhase::Hover => sys::FlutterPointerPhase_kHover,
-        }
-    }
-}
-
-pub enum SafeMouseButton {
+pub enum FlutterPointerMouseButton {
     Left,
     Right,
     Middle,
 }
 
-impl From<SafeMouseButton> for sys::FlutterPointerMouseButtons {
-    fn from(value: SafeMouseButton) -> Self {
+impl From<FlutterPointerMouseButton> for sys::FlutterPointerMouseButtons {
+    fn from(value: FlutterPointerMouseButton) -> Self {
         match value {
-            SafeMouseButton::Left => {
+            FlutterPointerMouseButton::Left => {
                 sys::FlutterPointerMouseButtons_kFlutterPointerButtonMousePrimary
             }
-            SafeMouseButton::Right => {
+            FlutterPointerMouseButton::Right => {
                 sys::FlutterPointerMouseButtons_kFlutterPointerButtonMouseSecondary
             }
-            SafeMouseButton::Middle => {
+            FlutterPointerMouseButton::Middle => {
                 sys::FlutterPointerMouseButtons_kFlutterPointerButtonMouseMiddle
             }
         }

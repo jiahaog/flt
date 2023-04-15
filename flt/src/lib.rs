@@ -1,6 +1,7 @@
 use crossterm::event::{read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
-    EmbedderCallbacks, Pixel, SafeEngine, SafeMouseButton, SafePointerPhase, SafeSignalKind,
+    EmbedderCallbacks, FlutterEngine, FlutterPointerMouseButton, FlutterPointerPhase,
+    FlutterPointerSignalKind, Pixel,
 };
 use terminal_window::TerminalWindow;
 
@@ -13,7 +14,7 @@ const PIXEL_RATIO: f64 = 0.7;
 const SCROLL_DELTA: f64 = 10.0;
 
 pub struct TerminalEmbedder {
-    engine: SafeEngine<TerminalEmbedderCallbacks>,
+    engine: FlutterEngine<TerminalEmbedderCallbacks>,
 }
 
 impl TerminalEmbedder {
@@ -25,7 +26,7 @@ impl TerminalEmbedder {
         let (width, height) = callbacks.terminal_window.size();
 
         let embedder = Self {
-            engine: SafeEngine::new(assets_dir, icu_data_path, callbacks),
+            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks),
         };
 
         embedder.engine.notify_display_update(FPS as f64);
@@ -62,20 +63,20 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
                             // (SafePointerPhase::Down, to_mouse_button(mouse_button))
                             self.engine.send_pointer_event(
-                                SafePointerPhase::Down,
+                                FlutterPointerPhase::Down,
                                 column as f64,
                                 row as f64,
-                                SafeSignalKind::None,
+                                FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
                             );
                         }
                         crossterm::event::MouseEventKind::Up(mouse_button) => {
                             self.engine.send_pointer_event(
-                                SafePointerPhase::Up,
+                                FlutterPointerPhase::Up,
                                 column as f64,
                                 row as f64,
-                                SafeSignalKind::None,
+                                FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
                             );
@@ -84,30 +85,30 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::Drag(_) => continue,
                         crossterm::event::MouseEventKind::Moved => {
                             self.engine.send_pointer_event(
-                                SafePointerPhase::Hover,
+                                FlutterPointerPhase::Hover,
                                 column as f64,
                                 row as f64,
-                                SafeSignalKind::None,
+                                FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![],
                             );
                         }
                         crossterm::event::MouseEventKind::ScrollUp => {
                             self.engine.send_pointer_event(
-                                SafePointerPhase::Up,
+                                FlutterPointerPhase::Up,
                                 column as f64,
                                 row as f64,
-                                SafeSignalKind::Scroll,
+                                FlutterPointerSignalKind::Scroll,
                                 -SCROLL_DELTA,
                                 vec![],
                             );
                         }
                         crossterm::event::MouseEventKind::ScrollDown => {
                             self.engine.send_pointer_event(
-                                SafePointerPhase::Down,
+                                FlutterPointerPhase::Down,
                                 column as f64,
                                 row as f64,
-                                SafeSignalKind::Scroll,
+                                FlutterPointerSignalKind::Scroll,
                                 SCROLL_DELTA,
                                 vec![],
                             );
@@ -143,10 +144,10 @@ impl EmbedderCallbacks for TerminalEmbedderCallbacks {
     }
 }
 
-fn to_mouse_button(value: crossterm::event::MouseButton) -> SafeMouseButton {
+fn to_mouse_button(value: crossterm::event::MouseButton) -> FlutterPointerMouseButton {
     match value {
-        crossterm::event::MouseButton::Left => SafeMouseButton::Left,
-        crossterm::event::MouseButton::Right => SafeMouseButton::Right,
-        crossterm::event::MouseButton::Middle => SafeMouseButton::Middle,
+        crossterm::event::MouseButton::Left => FlutterPointerMouseButton::Left,
+        crossterm::event::MouseButton::Right => FlutterPointerMouseButton::Right,
+        crossterm::event::MouseButton::Middle => FlutterPointerMouseButton::Middle,
     }
 }
