@@ -22,7 +22,14 @@ use flutter_sys::Pixel;
 
 pub struct TerminalWindow {
     stdout: Stdout,
-    lines: Vec<Vec<(Pixel, char)>>,
+    lines: Vec<Vec<TerminalChar>>,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct TerminalChar {
+    foreground: Color,
+    background: Option<Color>,
+    char: char,
 }
 
 impl TerminalWindow {
@@ -124,11 +131,27 @@ impl TerminalWindow {
                     acc.push(vec![]);
                 }
                 let character = match (is_lit(&top), is_lit(&bottom)) {
-                    // Just use the top for the color for now.
-                    (true, true) => (top, BLOCK_FULL),
-                    (true, false) => (top, BLOCK_UPPER),
-                    (false, true) => (bottom, BLOCK_LOWER),
-                    (false, false) => (Pixel::zero(), BLOCK_EMPTY),
+                    (true, true) => TerminalChar {
+                        // Upper is the foreground, lower is the background.
+                        foreground: to_color(&top),
+                        background: Some(to_color(&bottom)),
+                        char: BLOCK_UPPER,
+                    },
+                    (true, false) => TerminalChar {
+                        foreground: to_color(&top),
+                        background: None,
+                        char: BLOCK_UPPER,
+                    },
+                    (false, true) => TerminalChar {
+                        foreground: to_color(&bottom),
+                        background: None,
+                        char: BLOCK_LOWER,
+                    },
+                    (false, false) => TerminalChar {
+                        foreground: to_color(&Pixel::zero()),
+                        background: None,
+                        char: BLOCK_EMPTY,
+                    },
                 };
 
                 let current_line = acc.last_mut().unwrap();
@@ -158,11 +181,18 @@ impl TerminalWindow {
                 self.stdout.queue(MoveTo(0, i as u16))?;
                 self.stdout.queue(Clear(ClearType::CurrentLine))?;
 
-                for (pixel, char) in current {
-                    let color: Color = to_color(pixel);
-
-                    self.stdout
-                        .queue(PrintStyledContent(char.to_string().with(color)))?;
+                for TerminalChar {
+                    foreground,
+                    background,
+                    char,
+                } in current
+                {
+                    let style = char.to_string().with(*foreground);
+                    let style = match background {
+                        Some(background) => style.on(*background),
+                        None => style,
+                    };
+                    self.stdout.queue(PrintStyledContent(style))?;
                 }
             }
         }
@@ -182,7 +212,6 @@ fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {
 
 const BLOCK_LOWER: char = '▄';
 const BLOCK_UPPER: char = '▀';
-const BLOCK_FULL: char = '█';
 const BLOCK_EMPTY: char = ' ';
 
 impl From<ErrorKind> for Error {
