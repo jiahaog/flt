@@ -18,7 +18,7 @@ pub struct TerminalEmbedder {
 }
 
 impl TerminalEmbedder {
-    pub fn new(assets_dir: &str, icu_data_path: &str) -> Self {
+    pub fn new(assets_dir: &str, icu_data_path: &str) -> Result<Self, Error> {
         let callbacks = TerminalEmbedderCallbacks {
             terminal_window: TerminalWindow::new(),
         };
@@ -26,19 +26,19 @@ impl TerminalEmbedder {
         let (width, height) = callbacks.terminal_window.size();
 
         let embedder = Self {
-            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks),
+            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
         };
 
-        embedder.engine.notify_display_update(FPS as f64);
+        embedder.engine.notify_display_update(FPS as f64)?;
 
         embedder
             .engine
-            .send_window_metrics_event(width, height, PIXEL_RATIO);
+            .send_window_metrics_event(width, height, PIXEL_RATIO)?;
 
-        embedder
+        Ok(embedder)
     }
 
-    pub fn wait_for_input(&self) {
+    pub fn wait_for_input(&self) -> Result<(), Error> {
         loop {
             match read().unwrap() {
                 crossterm::event::Event::FocusGained => todo!(),
@@ -69,7 +69,7 @@ impl TerminalEmbedder {
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
-                            );
+                            )?;
                         }
                         crossterm::event::MouseEventKind::Up(mouse_button) => {
                             self.engine.send_pointer_event(
@@ -79,7 +79,7 @@ impl TerminalEmbedder {
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
-                            );
+                            )?;
                         }
                         // Just continue as it's too annoying to log these common events.
                         crossterm::event::MouseEventKind::Drag(_) => continue,
@@ -91,7 +91,7 @@ impl TerminalEmbedder {
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![],
-                            );
+                            )?;
                         }
                         crossterm::event::MouseEventKind::ScrollUp => {
                             self.engine.send_pointer_event(
@@ -101,7 +101,7 @@ impl TerminalEmbedder {
                                 FlutterPointerSignalKind::Scroll,
                                 -SCROLL_DELTA,
                                 vec![],
-                            );
+                            )?;
                         }
                         crossterm::event::MouseEventKind::ScrollDown => {
                             self.engine.send_pointer_event(
@@ -111,7 +111,7 @@ impl TerminalEmbedder {
                                 FlutterPointerSignalKind::Scroll,
                                 SCROLL_DELTA,
                                 vec![],
-                            );
+                            )?;
                         }
                     };
                 }
@@ -121,11 +121,13 @@ impl TerminalEmbedder {
                         columns as usize,
                         // The terminal renderer merges two pixels (top and bottom) into one.
                         (rows * 2) as usize,
+                        // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so compressed?
                         PIXEL_RATIO,
-                    );
+                    )?;
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -149,5 +151,16 @@ fn to_mouse_button(value: crossterm::event::MouseButton) -> FlutterPointerMouseB
         crossterm::event::MouseButton::Left => FlutterPointerMouseButton::Left,
         crossterm::event::MouseButton::Right => FlutterPointerMouseButton::Right,
         crossterm::event::MouseButton::Middle => FlutterPointerMouseButton::Middle,
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    EngineError(flutter_sys::Error),
+}
+
+impl From<flutter_sys::Error> for Error {
+    fn from(value: flutter_sys::Error) -> Self {
+        Error::EngineError(value)
     }
 }

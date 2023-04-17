@@ -21,7 +21,7 @@ impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
 }
 
 impl<T: EmbedderCallbacks> FlutterEngine<T> {
-    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Self {
+    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
             __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
@@ -49,30 +49,28 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
 
         let user_data_ptr = embedder.user_data;
 
-        assert_eq!(
-            unsafe {
-                sys::FlutterEngineRun(
-                    1,
-                    &renderer_config,
-                    &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
-                    user_data_ptr as *mut std::ffi::c_void,
-                    &embedder.engine as *const sys::FlutterEngine as *mut sys::FlutterEngine,
-                )
-            },
-            sys::FlutterEngineResult_kSuccess,
-            "Engine started successfully"
-        );
-
-        embedder
+        let result = unsafe {
+            sys::FlutterEngineRun(
+                1,
+                &renderer_config,
+                &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
+                user_data_ptr as *mut std::ffi::c_void,
+                &embedder.engine as *const sys::FlutterEngine as *mut sys::FlutterEngine,
+            )
+        };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(embedder),
+            err => Err(err.into()),
+        }
     }
 
     /// Returns a duration from when the Flutter Engine was started.
-    pub fn duration_from_start(&self) -> Duration {
+    fn duration_from_start(&self) -> Duration {
         // Always offset instants from `engine_start_time` to match the engine time base.
         Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 
-    pub fn notify_display_update(&self, refresh_rate: f64) {
+    pub fn notify_display_update(&self, refresh_rate: f64) -> Result<(), Error> {
         let display = sys::FlutterEngineDisplay {
             struct_size: std::mem::size_of::<sys::FlutterEngineDisplay>(),
             display_id: 0,
@@ -80,21 +78,26 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             refresh_rate,
         };
 
-        assert_eq!(
-            unsafe {
-                sys::FlutterEngineNotifyDisplayUpdate(
-                    self.engine,
-                    sys::FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
-                    &display as *const sys::FlutterEngineDisplay,
-                    1,
-                )
-            },
-            sys::FlutterEngineResult_kSuccess,
-            "notify display update"
-        );
+        let result = unsafe {
+            sys::FlutterEngineNotifyDisplayUpdate(
+                self.engine,
+                sys::FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
+                &display as *const sys::FlutterEngineDisplay,
+                1,
+            )
+        };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
     }
 
-    pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
+    pub fn send_window_metrics_event(
+        &self,
+        width: usize,
+        height: usize,
+        pixel_ratio: f64,
+    ) -> Result<(), Error> {
         let event = sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<sys::FlutterWindowMetricsEvent>(),
             width,
@@ -107,16 +110,17 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             physical_view_inset_bottom: 0.0,
             physical_view_inset_left: 0.0,
         };
-        assert_eq!(
-            unsafe {
-                sys::FlutterEngineSendWindowMetricsEvent(
-                    self.engine,
-                    &event as *const sys::FlutterWindowMetricsEvent,
-                )
-            },
-            sys::FlutterEngineResult_kSuccess,
-            "Window metrics set successfully"
-        );
+
+        let result = unsafe {
+            sys::FlutterEngineSendWindowMetricsEvent(
+                self.engine,
+                &event as *const sys::FlutterWindowMetricsEvent,
+            )
+        };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
     }
 
     pub fn send_pointer_event(
@@ -127,7 +131,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
         signal_kind: FlutterPointerSignalKind,
         scroll_delta_y: f64,
         buttons: Vec<FlutterPointerMouseButton>,
-    ) {
+    ) -> Result<(), Error> {
         let flutter_pointer_event = sys::FlutterPointerEvent {
             struct_size: std::mem::size_of::<sys::FlutterPointerEvent>(),
             phase: phase.into(),
@@ -150,11 +154,11 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             rotation: 0.0,
         };
 
-        unsafe {
-            assert_eq!(
-                sys::FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1),
-                sys::FlutterEngineResult_kSuccess
-            );
+        let result =
+            unsafe { sys::FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1) };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
         }
     }
 }
@@ -202,4 +206,22 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     user_data.draw(width, height, buf);
 
     return true;
+}
+
+#[derive(Debug)]
+pub enum Error {
+    InvalidLibraryVersion,
+    InvalidArguments,
+    InternalConsistency,
+}
+
+impl From<sys::FlutterEngineResult> for Error {
+    fn from(value: sys::FlutterEngineResult) -> Self {
+        match value {
+            sys::FlutterEngineResult_kInvalidLibraryVersion => Error::InvalidLibraryVersion,
+            sys::FlutterEngineResult_kInvalidArguments => Error::InvalidArguments,
+            sys::FlutterEngineResult_kInternalInconsistency => Error::InternalConsistency,
+            value => panic!("Unexpected value for FlutterEngineResult: {} ", value),
+        }
+    }
 }

@@ -10,9 +10,11 @@ struct Args {
     icu_data_path: String,
 }
 
-fn main() {
+fn main() -> Result<(), flt::Error> {
     let args = Args::parse();
 
-    let embedder = flt::TerminalEmbedder::new(&args.assets_dir, &args.icu_data_path);
-    embedder.wait_for_input();
+    let embedder = flt::TerminalEmbedder::new(&args.assets_dir, &args.icu_data_path)?;
+    embedder.wait_for_input()?;
+
+    Ok(())
 }
