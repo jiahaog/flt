@@ -85,6 +85,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               ),
             );
           }
+          if (index == 2) {
+            return const TextField(
+              decoration: InputDecoration(
+                hintText: 'Enter a search term',
+              ),
+            );
+          }
           return ListTile(
             title: Text(items[index]),
           );

@@ -1,7 +1,7 @@
 use crossterm::event::{read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
     EmbedderCallbacks, FlutterEngine, FlutterPointerMouseButton, FlutterPointerPhase,
-    FlutterPointerSignalKind, Pixel,
+    FlutterPointerSignalKind, KeyEventType, Pixel,
 };
 use terminal_window::TerminalWindow;
 
@@ -46,8 +46,12 @@ impl TerminalEmbedder {
                 crossterm::event::Event::Key(KeyEvent {
                     code, modifiers, ..
                 }) => {
-                    if code == KeyCode::Char('c') && modifiers == KeyModifiers::CONTROL {
+                    if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('c') {
                         break;
+                    }
+                    if let KeyCode::Char(c) = code {
+                        self.engine.send_key_event(KeyEventType::Down, c)?;
+                        self.engine.send_key_event(KeyEventType::Up, c)?;
                     }
                 }
                 crossterm::event::Event::Mouse(MouseEvent {

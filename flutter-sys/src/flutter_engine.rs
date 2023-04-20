@@ -2,7 +2,7 @@ use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::sys;
+use crate::{sys, KeyEventType};
 use std::slice;
 use std::time::{Duration, Instant};
 
@@ -160,6 +160,32 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             sys::FlutterEngineResult_kSuccess => Ok(()),
             err => Err(err.into()),
         }
+    }
+
+    // TODO(jiahaog): Actually implement this.
+    #[allow(unused)]
+    pub fn send_key_event(&self, event_type: KeyEventType, c: char) -> Result<(), Error> {
+        // let assets_path = CString::new("abc").unwrap().into_raw();
+
+        // let flutter_key_event = sys::FlutterKeyEvent {
+        //     struct_size: std::mem::size_of::<sys::FlutterKeyEvent>(),
+        //     timestamp: self.duration_from_start().as_micros() as f64,
+        //     type_: event_type.into(),
+        //     // KeyI
+        //     physical: 0x0007000c,
+        //     logical: 0x00000000069,
+        //     character: assets_path,
+        //     synthesized: false,
+        // };
+
+        // let result = unsafe {
+        //     sys::FlutterEngineSendKeyEvent(self.engine, &flutter_key_event, None, null_mut())
+        // };
+        // match result {
+        //     sys::FlutterEngineResult_kSuccess => Ok(()),
+        //     err => Err(err.into()),
+        // }
+        Ok(())
     }
 }
 
