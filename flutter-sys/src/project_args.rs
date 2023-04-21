@@ -62,7 +62,7 @@ impl FlutterProjectArgs {
             log_message_callback: Some(log_message_callback::<T>),
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
-            update_semantics_callback: None,
+            update_semantics_callback: Some(update_semantics_callback),
         }
     }
 }
@@ -84,4 +84,11 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     let message = message.to_owned();
 
     message.to_str().unwrap().to_string()
+}
+
+extern "C" fn update_semantics_callback(
+    semantics_update: *const sys::FlutterSemanticsUpdate,
+    user_data: *mut ::std::os::raw::c_void,
+) {
+    println!("update semantics callback");
 }
