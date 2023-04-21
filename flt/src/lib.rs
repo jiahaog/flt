@@ -28,6 +28,7 @@ impl TerminalEmbedder {
         let embedder = Self {
             engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
         };
+        embedder.engine.update_semantics(true)?;
 
         embedder.engine.notify_display_update(FPS as f64)?;
 

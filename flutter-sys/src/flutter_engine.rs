@@ -70,6 +70,14 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
         Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 
+    pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
+        let result = unsafe { sys::FlutterEngineUpdateSemanticsEnabled(self.engine, enabled) };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
+    }
+
     pub fn notify_display_update(&self, refresh_rate: f64) -> Result<(), Error> {
         let display = sys::FlutterEngineDisplay {
             struct_size: std::mem::size_of::<sys::FlutterEngineDisplay>(),
