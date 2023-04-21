@@ -29,7 +29,15 @@ fn main() {
 
     let engine_ref = fs::read_to_string(engine_ref_path).unwrap();
     let engine_ref = engine_ref.trim();
-    let engine_url = format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/linux-x64/linux-x64-embedder.zip");
+
+    // This is tricky to figure out and can change between releases.
+    //
+    // Use the following to find it:
+    // ```
+    // gsutil ls -r gs://flutter_infra_release/flutter/{engine_ref} | grep embedder
+    // ```
+    // Source: https://www.industrialflutter.com/blogs/where-to-find-prebuilt-flutter-engine-artifacts/
+    let engine_url = format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/linux-x64/linux-x64-embedder");
 
     let out_dir_env = env::var("OUT_DIR").unwrap();
 
@@ -38,20 +46,24 @@ fn main() {
     let embedder_zip_path = out_dir.join("flutter-linux-x64-embedder.zip");
 
     // Download the zip file containing the Flutter engine dynamic library.
-    Command::new("curl")
+    assert!(Command::new("curl")
         .arg(engine_url)
         .arg("--output")
         .arg(embedder_zip_path.clone())
-        .output()
-        .unwrap();
+        .status()
+        .unwrap()
+        .success());
 
     // Unzip it.
-    Command::new("unzip")
-        .arg(embedder_zip_path)
+    assert!(Command::new("unzip")
+        // Overwrite.
+        .arg("-o")
+        .arg(embedder_zip_path.clone())
         .arg("-d")
         .arg(out_dir)
-        .output()
-        .unwrap();
+        .status()
+        .unwrap()
+        .success());
 
     // There will be two files of interest in the unzipped output:
     // - The headers: flutter_embedder.h
