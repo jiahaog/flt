@@ -31,16 +31,19 @@ impl TerminalEmbedder {
         embedder.engine.update_semantics(true)?;
 
         embedder.engine.notify_display_update(FPS as f64)?;
+        embedder.engine.update_semantics(true)?;
 
         embedder
             .engine
             .send_window_metrics_event(width, height, PIXEL_RATIO)?;
+        embedder.engine.update_semantics(true)?;
 
         Ok(embedder)
     }
 
     pub fn wait_for_input(&self) -> Result<(), Error> {
         loop {
+            self.engine.update_semantics(true)?;
             match read().unwrap() {
                 crossterm::event::Event::FocusGained => todo!(),
                 crossterm::event::Event::FocusLost => todo!(),

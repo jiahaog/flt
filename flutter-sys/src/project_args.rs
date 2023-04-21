@@ -1,5 +1,8 @@
 use crate::{embedder_callbacks::EmbedderCallbacks, sys};
-use std::ffi::{CStr, CString};
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+};
 
 pub struct FlutterProjectArgs {
     assets_path: *mut i8,
@@ -91,4 +94,59 @@ extern "C" fn update_semantics_callback(
     user_data: *mut ::std::os::raw::c_void,
 ) {
     println!("update semantics callback");
+    // let sys::FlutterSemanticsUpdate {
+    //     nodes_count, nodes, ..
+    // } = unsafe { *semantics_update };
+
+    // let nodes = unsafe { std::slice::from_raw_parts(nodes, nodes_count) };
+
+    // let tree = FlutterSemanticsTree::from_nodes(nodes);
+    // println!("root: {:?}", tree.root());
+}
+
+#[derive(Debug)]
+struct FlutterSemanticsTree<'a> {
+    map: HashMap<i32, &'a sys::FlutterSemanticsNode>,
+}
+
+impl<'a> FlutterSemanticsTree<'a> {
+    fn from_nodes(nodes: &'a [sys::FlutterSemanticsNode]) -> Self {
+        Self {
+            map: nodes.into_iter().map(|node| (node.id, node)).collect(),
+        }
+    }
+
+    fn root(&self) -> FlutterSemanticsNode {
+        let root_id = 0;
+
+        self.root_recur(root_id)
+    }
+
+    fn root_recur(&self, id: i32) -> FlutterSemanticsNode {
+        let &&sys::FlutterSemanticsNode {
+            children_in_traversal_order,
+            child_count,
+            label,
+            ..
+        } = self.map.get(&id).expect("Node ID must always be present");
+
+        let children_ids =
+            unsafe { std::slice::from_raw_parts(children_in_traversal_order, child_count) };
+
+        let children = children_ids
+            .into_iter()
+            .map(|id| self.root_recur(*id))
+            .collect();
+
+        FlutterSemanticsNode {
+            children,
+            label: to_string(label),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FlutterSemanticsNode {
+    children: Vec<FlutterSemanticsNode>,
+    label: String,
 }
