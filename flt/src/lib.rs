@@ -18,9 +18,9 @@ pub struct TerminalEmbedder {
 }
 
 impl TerminalEmbedder {
-    pub fn new(assets_dir: &str, icu_data_path: &str) -> Result<Self, Error> {
+    pub fn new(assets_dir: &str, icu_data_path: &str, simple_output: bool) -> Result<Self, Error> {
         let callbacks = TerminalEmbedderCallbacks {
-            terminal_window: TerminalWindow::new(),
+            terminal_window: TerminalWindow::new(simple_output),
         };
 
         let (width, height) = callbacks.terminal_window.size();

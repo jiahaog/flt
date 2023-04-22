@@ -17,6 +17,7 @@ use flutter_sys::Pixel;
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
+    simple_output: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -26,19 +27,22 @@ struct TerminalCell {
 }
 
 impl TerminalWindow {
-    pub fn new() -> Self {
+    pub fn new(simple_output: bool) -> Self {
         let mut stdout = stdout();
 
-        // This causes the terminal to be output on an alternate buffer.
-        stdout.execute(EnterAlternateScreen).unwrap();
-        stdout.execute(Hide).unwrap();
+        if !simple_output {
+            // This causes the terminal to be output on an alternate buffer.
+            stdout.execute(EnterAlternateScreen).unwrap();
+            stdout.execute(Hide).unwrap();
 
-        enable_raw_mode().unwrap();
-        stdout.execute(EnableMouseCapture).unwrap();
+            enable_raw_mode().unwrap();
+            stdout.execute(EnableMouseCapture).unwrap();
+        }
 
         Self {
             stdout,
             lines: vec![],
+            simple_output,
         }
     }
 
@@ -62,10 +66,12 @@ fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
 
 impl Drop for TerminalWindow {
     fn drop(&mut self) {
-        self.stdout.execute(DisableMouseCapture).unwrap();
-        disable_raw_mode().unwrap();
-        self.stdout.execute(Show).unwrap();
-        self.stdout.execute(LeaveAlternateScreen).unwrap();
+        if !self.simple_output {
+            self.stdout.execute(DisableMouseCapture).unwrap();
+            disable_raw_mode().unwrap();
+            self.stdout.execute(Show).unwrap();
+            self.stdout.execute(LeaveAlternateScreen).unwrap();
+        }
     }
 }
 
