@@ -7,16 +7,23 @@ use std::slice;
 use std::time::{Duration, Instant};
 
 pub struct FlutterEngine<T: EmbedderCallbacks> {
-    engine: sys::FlutterEngine,
-    user_data: *mut T,
+    // `UserData` needs to be on the heap so that the Flutter Engine
+    // callbacks can safely provide a pointer to it (if it was on the
+    // stack, there is a chance that the value is dropped when the
+    // callbacks still reference it).
+    user_data: Box<UserData<T>>,
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
+pub struct UserData<T: EmbedderCallbacks> {
+    pub callbacks: T,
+    engine: sys::FlutterEngine,
+}
+
 impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
     fn drop(&mut self) {
-        unsafe { sys::FlutterEngineShutdown(self.engine) };
-        unsafe { Box::from_raw(self.user_data) };
+        unsafe { sys::FlutterEngineShutdown(self.get_engine()) };
     }
 }
 
@@ -34,29 +41,33 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
 
         let project_args = FlutterProjectArgs::new(assets_dir, icu_data_path);
 
-        let embedder = Self {
+        let mut user_data = Box::new(UserData {
+            callbacks,
             engine: std::ptr::null_mut(),
-            // `UserData` needs to be on the heap so that the Flutter Engine
-            // callbacks can safely provide a pointer to it (if it was on the
-            // stack, there is a chance that the value is dropped when the
-            // callbacks still reference it). So opt into manual memory
-            // management of this struct.
-            user_data: Box::into_raw(callbacks.into()),
+        });
 
-            engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
-            start_instant: Instant::now(),
-        };
+        let user_data_ptr: *mut UserData<T> = &mut *user_data;
+        let user_data_ptr: *mut std::ffi::c_void = user_data_ptr as *mut std::ffi::c_void;
 
-        let user_data_ptr = embedder.user_data;
+        let mut engine_ptr: sys::FlutterEngine = std::ptr::null_mut();
 
         let result = unsafe {
             sys::FlutterEngineRun(
                 1,
                 &renderer_config,
                 &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
-                user_data_ptr as *mut std::ffi::c_void,
-                &embedder.engine as *const sys::FlutterEngine as *mut sys::FlutterEngine,
+                user_data_ptr,
+                &mut engine_ptr,
             )
+        };
+
+        user_data.engine = engine_ptr;
+
+        let embedder = Self {
+            user_data,
+
+            engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
+            start_instant: Instant::now(),
         };
         match result {
             sys::FlutterEngineResult_kSuccess => Ok(embedder),
@@ -70,8 +81,13 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
         Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 
+    fn get_engine(&self) -> sys::FlutterEngine {
+        self.user_data.engine
+    }
+
     pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
-        let result = unsafe { sys::FlutterEngineUpdateSemanticsEnabled(self.engine, enabled) };
+        let result =
+            unsafe { sys::FlutterEngineUpdateSemanticsEnabled(self.get_engine(), enabled) };
         match result {
             sys::FlutterEngineResult_kSuccess => Ok(()),
             err => Err(err.into()),
@@ -88,7 +104,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
 
         let result = unsafe {
             sys::FlutterEngineNotifyDisplayUpdate(
-                self.engine,
+                self.get_engine(),
                 sys::FlutterEngineDisplaysUpdateType_kFlutterEngineDisplaysUpdateTypeStartup,
                 &display as *const sys::FlutterEngineDisplay,
                 1,
@@ -121,7 +137,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
 
         let result = unsafe {
             sys::FlutterEngineSendWindowMetricsEvent(
-                self.engine,
+                self.get_engine(),
                 &event as *const sys::FlutterWindowMetricsEvent,
             )
         };
@@ -162,8 +178,9 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             rotation: 0.0,
         };
 
-        let result =
-            unsafe { sys::FlutterEngineSendPointerEvent(self.engine, &flutter_pointer_event, 1) };
+        let result = unsafe {
+            sys::FlutterEngineSendPointerEvent(self.get_engine(), &flutter_pointer_event, 1)
+        };
         match result {
             sys::FlutterEngineResult_kSuccess => Ok(()),
             err => Err(err.into()),
@@ -206,7 +223,7 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let user_data: &mut T = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].
@@ -237,7 +254,7 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     */
     let width = row_bytes / 4;
 
-    user_data.draw(width, height, buf);
+    user_data.callbacks.draw(width, height, buf);
 
     return true;
 }

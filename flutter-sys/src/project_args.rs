@@ -1,4 +1,4 @@
-use crate::{embedder_callbacks::EmbedderCallbacks, sys};
+use crate::{embedder_callbacks::EmbedderCallbacks, sys, UserData};
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
@@ -75,11 +75,11 @@ extern "C" fn log_message_callback<T: EmbedderCallbacks>(
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut T = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
     let tag = to_string(tag);
     let message = to_string(message);
 
-    user_data.log(tag, message);
+    user_data.callbacks.log(tag, message);
 }
 
 fn to_string(c_str: *const std::os::raw::c_char) -> String {
