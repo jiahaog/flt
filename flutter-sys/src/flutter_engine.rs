@@ -18,7 +18,7 @@ pub struct FlutterEngine<T: EmbedderCallbacks> {
 
 pub struct UserData<T: EmbedderCallbacks> {
     pub callbacks: T,
-    engine: sys::FlutterEngine,
+    pub engine: sys::FlutterEngine,
 }
 
 impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
@@ -55,7 +55,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             sys::FlutterEngineRun(
                 1,
                 &renderer_config,
-                &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
+                &project_args.to_unsafe_args::<T>(user_data_ptr) as *const sys::FlutterProjectArgs,
                 user_data_ptr,
                 &mut engine_ptr,
             )
