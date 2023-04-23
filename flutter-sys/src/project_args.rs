@@ -18,27 +18,6 @@ impl Drop for FlutterProjectArgs {
     }
 }
 
-extern "C" fn true_callback(_arg1: *mut ::std::os::raw::c_void) -> bool {
-    true
-}
-
-extern "C" fn post_task_callback<T: EmbedderCallbacks>(
-    task: sys::FlutterTask,
-    _target_time_nanos: u64,
-    user_data: *mut ::std::os::raw::c_void,
-) {
-    println!("post task callback");
-
-    // thread::spawn(|| {
-    //     let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
-    //     let engine = user_data.engine;
-    //     unsafe { sys::FlutterEngineRunTask(engine, &task) }
-    // });
-    // todo!();
-    // let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
-    // unsafe { sys::FlutterEngineRunTask(user_data.engine.0, &task) };
-}
-
 impl FlutterProjectArgs {
     pub fn new(assets_path: &str, icu_data_path: &str) -> Self {
         let assets_path = CString::new(assets_path).unwrap().into_raw();
@@ -50,25 +29,7 @@ impl FlutterProjectArgs {
         }
     }
 
-    pub fn to_unsafe_args<T: EmbedderCallbacks>(
-        &self,
-        user_data: *mut std::ffi::c_void,
-    ) -> sys::FlutterProjectArgs {
-        let platform_task_runner = sys::FlutterTaskRunnerDescription {
-            struct_size: std::mem::size_of::<sys::FlutterTaskRunnerDescription>(),
-            user_data: user_data as *mut std::ffi::c_void,
-            runs_task_on_current_thread_callback: Some(true_callback),
-            post_task_callback: Some(post_task_callback::<T>),
-            identifier: 0,
-        };
-
-        let custom_task_runners = sys::FlutterCustomTaskRunners {
-            struct_size: std::mem::size_of::<sys::FlutterCustomTaskRunners>(),
-            platform_task_runner: &platform_task_runner,
-            render_task_runner: std::ptr::null(),
-            thread_priority_setter: None,
-        };
-
+    pub fn to_unsafe_args<T: EmbedderCallbacks>(&self) -> sys::FlutterProjectArgs {
         sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<sys::FlutterProjectArgs>(),
             assets_path: self.assets_path,
@@ -93,7 +54,6 @@ impl FlutterProjectArgs {
             is_persistent_cache_read_only: false,
             vsync_callback: None,
             custom_dart_entrypoint: std::ptr::null(),
-            // custom_task_runners: &custom_task_runners,
             custom_task_runners: std::ptr::null(),
             shutdown_dart_vm_when_done: true,
             compositor: std::ptr::null(),
@@ -130,8 +90,8 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
 }
 
 extern "C" fn update_semantics_callback(
-    _semantics_update: *const sys::FlutterSemanticsUpdate,
-    _user_data: *mut ::std::os::raw::c_void,
+    semantics_update: *const sys::FlutterSemanticsUpdate,
+    user_data: *mut ::std::os::raw::c_void,
 ) {
     println!("update semantics callback");
     // let sys::FlutterSemanticsUpdate {
@@ -144,13 +104,11 @@ extern "C" fn update_semantics_callback(
     // println!("root: {:?}", tree.root());
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 struct FlutterSemanticsTree<'a> {
     map: HashMap<i32, &'a sys::FlutterSemanticsNode>,
 }
 
-#[allow(unused)]
 impl<'a> FlutterSemanticsTree<'a> {
     fn from_nodes(nodes: &'a [sys::FlutterSemanticsNode]) -> Self {
         Self {
@@ -187,7 +145,6 @@ impl<'a> FlutterSemanticsTree<'a> {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 pub struct FlutterSemanticsNode {
     children: Vec<FlutterSemanticsNode>,
