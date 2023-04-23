@@ -10,8 +10,15 @@ pushd example
 popd
 
 LOCAL_ENGINE_OUT="$HOME/dev/engine/src/out/host_debug_unopt"
+
+if [ "$(uname)" == "Darwin" ]; then
+  ICU_DATA_PATH='third_party/flutter/bin/cache/artifacts/engine/darwin-x64/icudtl.dat'
+else
+  ICU_DATA_PATH='third_party/flutter/bin/cache/artifacts/engine/linux-x64/icudtl.dat'
+fi
+
 FLT_ARGS=(
-  '--icu-data-path=third_party/flutter/bin/cache/artifacts/engine/darwin-x64/icudtl.dat'
+  "--icu-data-path=$ICU_DATA_PATH"
   '--assets-dir=example/build/flutter_assets'
 )
 

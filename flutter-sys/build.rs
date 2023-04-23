@@ -30,20 +30,13 @@ fn main() {
     let engine_ref = fs::read_to_string(engine_ref_path).unwrap();
     let engine_ref = engine_ref.trim();
 
-    // This is tricky to figure out and can change between releases.
-    //
-    // Use the following to find it:
-    // ```
-    // gsutil ls -r gs://flutter_infra_release/flutter/{engine_ref} | grep embedder
-    // ```
-    // Source: https://www.industrialflutter.com/blogs/where-to-find-prebuilt-flutter-engine-artifacts/
-    let engine_url = format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/darwin-x64/FlutterEmbedder.framework.zip");
-
     let out_dir_env = env::var("OUT_DIR").unwrap();
-
     let out_dir = Path::new(&out_dir_env);
 
-    let embedder_zip_path = out_dir.join(engine_url.split('/').last().unwrap());
+    let engine_url = engine_url(engine_ref);
+    let downloaded_file = engine_url.split('/').last().unwrap();
+
+    let embedder_zip_path = out_dir.join(downloaded_file);
 
     // Download the zip file containing the Flutter engine dynamic library.
     assert!(Command::new("curl")
@@ -54,54 +47,49 @@ fn main() {
         .unwrap()
         .success());
 
-    // Unzip it.
-    {
-        assert!(Command::new("unzip")
-            // Overwrite.
-            .arg("-o")
-            .arg(embedder_zip_path.clone())
-            .arg("-d")
-            .arg(out_dir)
-            .status()
-            .unwrap()
-            .success());
-
-        // For some reason on macOS, the above command will fail to extract the zip file?
-        // And doing it again always works.
-        //
-        // ```
-        // $ "unzip" "-o" "/Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip" "-d" "/Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out"
-        // Archive:  /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip
-        // inflating: /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip
-        // ```
-        assert!(Command::new("unzip")
-            // Overwrite.
-            .arg("-o")
-            .arg(embedder_zip_path.clone())
-            .arg("-d")
-            .arg(out_dir)
-            .status()
-            .unwrap()
-            .success());
-    }
-
-    // ld will link using `-l${rustc-link-lib}` which looks for
-    // `lib${rustc-link-lib}.dylib.
-    fs::rename(
-        out_dir.join("FlutterEmbedder"),
-        out_dir.join("libFlutterEmbedder.dylib"),
-    )
-    .unwrap();
+    unzip(&embedder_zip_path, out_dir);
 
     // There will be two files of interest in the unzipped output:
-    // - The headers: flutter_embedder.h
-    // - The dynamic library: libflutter_engine.so
-
-    let flutter_embedder_header_path = out_dir.join("Headers").join("FlutterEmbedder.h");
+    // (On Linux):
+    // - The headers: flutter_embedder.h for bindgen.
+    // - The dynamic library: libflutter_engine.so for linking.
 
     // Link against the Flutter dynamic library.
+    if cfg!(target_os = "macos") {
+        // On macOS, ld will link using `-l${rustc-link-lib}` which looks for
+        // `lib${rustc-link-lib}.dylib.
+        fs::rename(
+            out_dir.join("FlutterEmbedder"),
+            out_dir.join("libFlutterEmbedder.dylib"),
+        )
+        .unwrap();
+
+        // Matches `libFlutterEmbedder.dylib`.
+        println!("cargo:rustc-link-lib=FlutterEmbedder");
+    } else {
+        // Matches `libflutter_engine.so`.
+        println!("cargo:rustc-link-lib=flutter_engine");
+    };
+
+    // Find the Flutter dynamic library at this path.
     println!("cargo:rustc-link-search={}", out_dir.to_str().unwrap());
-    println!("cargo:rustc-link-lib=FlutterEmbedder");
+
+    let flutter_embedder_header_path = if cfg!(target_os = "macos") {
+        out_dir.join("Headers").join("FlutterEmbedder.h")
+    } else {
+        out_dir.join("flutter_embedder.h")
+    };
+    let flutter_embedder_header_path = flutter_embedder_header_path.to_str().unwrap();
+
+    let bindings = bindgen::Builder::default()
+        .header(flutter_embedder_header_path)
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .generate()
+        .expect("Unable to generate bindings");
+
+    bindings
+        .write_to_file(out_dir.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
 
     // Make `cargo run` work seamlessly.
     //
@@ -113,18 +101,57 @@ fn main() {
     // ```
     // sudo unzip /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip -d /Library/Frameworks/FlutterEmbedder.framework
     // ```
+    // TODO(jiahaog): Document this properly for macOS.
     println!(
         "cargo:rustc-env=LD_LIBRARY_PATH={}",
         out_dir.to_str().unwrap()
     );
+}
 
-    let bindings = bindgen::Builder::default()
-        .header(flutter_embedder_header_path.to_str().unwrap())
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate bindings");
+fn engine_url(engine_ref: &str) -> String {
+    // This is tricky to figure out and can change between releases.
+    //
+    // Use the following to find it:
+    // ```
+    // gsutil ls -r gs://flutter_infra_release/flutter/{engine_ref} | grep embedder
+    // ```
+    // Source: https://www.industrialflutter.com/blogs/where-to-find-prebuilt-flutter-engine-artifacts/
+    if cfg!(target_os = "macos") {
+        format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/darwin-x64/FlutterEmbedder.framework.zip")
+    } else {
+        format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/linux-x64/linux-x64-embedder")
+    }
+}
 
-    bindings
-        .write_to_file(out_dir.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+fn unzip(src: &Path, dest: &Path) {
+    assert!(Command::new("unzip")
+        // Overwrite.
+        .arg("-o")
+        .arg(src)
+        .arg("-d")
+        .arg(dest)
+        .status()
+        .unwrap()
+        .success());
+
+    // For some reason on macOS, the above command will fail to extract the zip file?
+    // And doing it again always works.
+    //
+    // ```
+    // $ "unzip" "-o" "/Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip" "-d" "/Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out"
+    // Archive:  /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip
+    // inflating: /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip
+    // ```
+    // TODO(jiahaog): Figure this out, I suspect antivirus.
+    if cfg!(target_os = "macos") {
+        assert!(Command::new("unzip")
+            // Overwrite.
+            .arg("-o")
+            .arg(src)
+            .arg("-d")
+            .arg(dest)
+            .status()
+            .unwrap()
+            .success());
+    }
 }
