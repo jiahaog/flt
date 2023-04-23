@@ -11,7 +11,7 @@ popd
 
 LOCAL_ENGINE_OUT="$HOME/dev/engine/src/out/host_debug_unopt"
 FLT_ARGS=(
-  '--icu-data-path=third_party/flutter/bin/cache/artifacts/engine/linux-x64/icudtl.dat'
+  '--icu-data-path=third_party/flutter/bin/cache/artifacts/engine/darwin-x64/icudtl.dat'
   '--assets-dir=example/build/flutter_assets'
 )
 
@@ -23,7 +23,7 @@ if [ "$mode" = 'debug' ]; then
   else
     # Use the downloaded prebuilt.
     #
-    # There may be multiple from different build configurations (hence the 
+    # There may be multiple from different build configurations (hence the
     # `head` command ), but they all should be the same binary.
     export LD_LIBRARY_PATH="$(dirname $(find 'target' -name 'libflutter_engine.so') | head -n 1)"
   fi
