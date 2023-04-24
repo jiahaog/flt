@@ -17,6 +17,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// TODO(jiahaog): Rewrite this into separate scripts for macOS and Linux.
 fn main() {
     let engine_ref_path = Path::new("../third_party/flutter/bin/internal/engine.version");
 
@@ -47,35 +48,28 @@ fn main() {
         .unwrap()
         .success());
 
-    unzip(&embedder_zip_path, out_dir);
+    if cfg!(target_os = "macos") {
+        let framework_dir = &out_dir.join("FlutterEmbedder.framework");
+        unzip(&embedder_zip_path, framework_dir);
+        // There's a zip within the zip...
+        unzip(
+            &framework_dir.join("FlutterEmbedder.framework.zip"),
+            framework_dir,
+        );
+    } else {
+        unzip(&embedder_zip_path, out_dir);
+    };
 
     // There will be two files of interest in the unzipped output:
     // (On Linux):
     // - The headers: flutter_embedder.h for bindgen.
     // - The dynamic library: libflutter_engine.so for linking.
 
-    // Link against the Flutter dynamic library.
-    if cfg!(target_os = "macos") {
-        // On macOS, ld will link using `-l${rustc-link-lib}` which looks for
-        // `lib${rustc-link-lib}.dylib.
-        fs::rename(
-            out_dir.join("FlutterEmbedder"),
-            out_dir.join("libFlutterEmbedder.dylib"),
-        )
-        .unwrap();
-
-        // Matches `libFlutterEmbedder.dylib`.
-        println!("cargo:rustc-link-lib=FlutterEmbedder");
-    } else {
-        // Matches `libflutter_engine.so`.
-        println!("cargo:rustc-link-lib=flutter_engine");
-    };
-
-    // Find the Flutter dynamic library at this path.
-    println!("cargo:rustc-link-search={}", out_dir.to_str().unwrap());
-
     let flutter_embedder_header_path = if cfg!(target_os = "macos") {
-        out_dir.join("Headers").join("FlutterEmbedder.h")
+        out_dir
+            .join("FlutterEmbedder.framework")
+            .join("Headers")
+            .join("FlutterEmbedder.h")
     } else {
         out_dir.join("flutter_embedder.h")
     };
@@ -91,19 +85,31 @@ fn main() {
         .write_to_file(out_dir.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
-    // Make `cargo run` work seamlessly.
-    //
-    // This only works for `cargo run`. The user will have to install the shared
-    // library themselves if they use the output binary from `cargo build`.
-    //
-    // On macOS, it seems like it isn't possible to override
-    // the dyld library paths with SIP enabled. Need to do something like:
-    // ```
-    // sudo unzip /Users/jiahaog/dev/flt/target/debug/build/flutter-sys-411194cdfb6611b7/out/FlutterEmbedder.framework.zip -d /Library/Frameworks/FlutterEmbedder.framework
-    // ```
-    // TODO(jiahaog): Document this properly for macOS.
+    // Link against the Flutter shared library.
+    if cfg!(target_os = "macos") {
+        // On macOS, ld will link using `-l${rustc-link-lib}` which looks for
+        // `lib${rustc-link-lib}.dylib.
+        // fs::copy(
+        //     out_dir.join("FlutterEmbedder.framework").join("FlutterEmbedder"),
+        //     out_dir.join("FlutterEmbedder.framework").join("libFlutterEmbedder.dylib"),
+        // )
+        // .unwrap();
+
+        // Matches `libFlutterEmbedder.dylib`.
+        println!("cargo:rustc-link-lib=framework=FlutterEmbedder");
+        println!(
+            "cargo:rustc-link-search=framework={}",
+            out_dir.to_str().unwrap()
+        );
+    } else {
+        // Matches `libflutter_engine.so`.
+        println!("cargo:rustc-link-lib=flutter_engine");
+        println!("cargo:rustc-link-search={}", out_dir.to_str().unwrap());
+    };
+
+    // Passed to the dependent binary crate to set the runtime search paths.
     println!(
-        "cargo:rustc-env=LD_LIBRARY_PATH={}",
+        "cargo:flutter_engine_lib_path={}",
         out_dir.to_str().unwrap()
     );
 }

@@ -2,6 +2,7 @@
 name = "flutter-sys"
 version = "0.1.0"
 edition = "2021"
+links = "flutter_engine"
 
 [lib]
 # TODO(jiahaog): Generated bindings fail these tests.
