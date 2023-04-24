@@ -89,6 +89,7 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     message.to_str().unwrap().to_string()
 }
 
+#[allow(unused)]
 extern "C" fn update_semantics_callback(
     semantics_update: *const sys::FlutterSemanticsUpdate,
     user_data: *mut ::std::os::raw::c_void,
@@ -104,11 +105,13 @@ extern "C" fn update_semantics_callback(
     // println!("root: {:?}", tree.root());
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct FlutterSemanticsTree<'a> {
     map: HashMap<i32, &'a sys::FlutterSemanticsNode>,
 }
 
+#[allow(unused)]
 impl<'a> FlutterSemanticsTree<'a> {
     fn from_nodes(nodes: &'a [sys::FlutterSemanticsNode]) -> Self {
         Self {
@@ -145,6 +148,7 @@ impl<'a> FlutterSemanticsTree<'a> {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct FlutterSemanticsNode {
     children: Vec<FlutterSemanticsNode>,
