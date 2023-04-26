@@ -2,6 +2,7 @@ use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
+use crate::task_runner::UserData;
 use crate::{sys, KeyEventType};
 use std::slice;
 use std::time::{Duration, Instant};
@@ -14,11 +15,6 @@ pub struct FlutterEngine<T: EmbedderCallbacks> {
     user_data: Box<UserData<T>>,
     engine_start_time: Duration,
     start_instant: Instant,
-}
-
-pub struct UserData<T: EmbedderCallbacks> {
-    pub callbacks: T,
-    engine: sys::FlutterEngine,
 }
 
 impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
@@ -39,20 +35,21 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             },
         };
 
-        let project_args = FlutterProjectArgs::new(assets_dir, icu_data_path);
-
-        let mut user_data = Box::new(UserData {
+        let mut user_data = Box::new(UserData::new(
             callbacks,
-            engine: std::ptr::null_mut(),
-        });
+            std::ptr::null_mut(),
+            std::thread::current().id(),
+        ));
 
         let user_data_ptr: *mut UserData<T> = &mut *user_data;
         let user_data_ptr: *mut std::ffi::c_void = user_data_ptr as *mut std::ffi::c_void;
 
+        let project_args = FlutterProjectArgs::new::<T>(assets_dir, icu_data_path, user_data_ptr);
+
         let mut engine_ptr: sys::FlutterEngine = std::ptr::null_mut();
 
         let result = unsafe {
-            sys::FlutterEngineRun(
+            sys::FlutterEngineInitialize(
                 1,
                 &renderer_config,
                 &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
@@ -60,19 +57,26 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
                 &mut engine_ptr,
             )
         };
+        if result != sys::FlutterEngineResult_kSuccess {
+            return Err(result.into());
+        };
 
         user_data.engine = engine_ptr;
 
-        let embedder = Self {
-            user_data,
+        let result = unsafe { sys::FlutterEngineRunInitialized(user_data.engine) };
+        if result != sys::FlutterEngineResult_kSuccess {
+            return Err(result.into());
+        };
 
+        Ok(Self {
+            user_data,
             engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
             start_instant: Instant::now(),
-        };
-        match result {
-            sys::FlutterEngineResult_kSuccess => Ok(embedder),
-            err => Err(err.into()),
-        }
+        })
+    }
+
+    pub fn run<F: Fn() -> Result<(), Error>>(&mut self, callback: F) -> Result<(), Error> {
+        self.user_data.run(callback)
     }
 
     /// Returns a duration from when the Flutter Engine was started.

@@ -18,7 +18,7 @@ struct Args {
 fn main() -> Result<(), flt::Error> {
     let args = Args::parse();
 
-    let embedder =
+    let mut embedder =
         flt::TerminalEmbedder::new(&args.assets_dir, &args.icu_data_path, args.simple_output)?;
     embedder.wait_for_input()?;
 

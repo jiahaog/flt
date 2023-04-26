@@ -38,100 +38,114 @@ impl TerminalEmbedder {
         Ok(embedder)
     }
 
-    pub fn wait_for_input(&self) -> Result<(), Error> {
-        loop {
-            match read().unwrap() {
-                crossterm::event::Event::FocusGained => todo!(),
-                crossterm::event::Event::FocusLost => todo!(),
-                crossterm::event::Event::Key(KeyEvent {
-                    code, modifiers, ..
-                }) => {
-                    if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('c') {
-                        break;
-                    }
-                    if let KeyCode::Char(c) = code {
-                        self.engine.send_key_event(KeyEventType::Down, c)?;
-                        self.engine.send_key_event(KeyEventType::Up, c)?;
-                    }
-                }
-                crossterm::event::Event::Mouse(MouseEvent {
-                    kind,
-                    column,
-                    row,
-                    modifiers: _,
-                }) => {
-                    // The terminal renderer merges two pixels (top and bottom) into one.
-                    let row = row * 2;
+    pub fn wait_for_input(&mut self) -> Result<(), Error> {
+        self.engine.run(|| {
+            // self.read_input()?;
+            Ok(())
+        })?;
 
-                    match kind {
-                        crossterm::event::MouseEventKind::Down(mouse_button) => {
-                            // (SafePointerPhase::Down, to_mouse_button(mouse_button))
-                            self.engine.send_pointer_event(
-                                FlutterPointerPhase::Down,
-                                column as f64,
-                                row as f64,
-                                FlutterPointerSignalKind::None,
-                                0.0,
-                                vec![to_mouse_button(mouse_button)],
-                            )?;
-                        }
-                        crossterm::event::MouseEventKind::Up(mouse_button) => {
-                            self.engine.send_pointer_event(
-                                FlutterPointerPhase::Up,
-                                column as f64,
-                                row as f64,
-                                FlutterPointerSignalKind::None,
-                                0.0,
-                                vec![to_mouse_button(mouse_button)],
-                            )?;
-                        }
-                        // Just continue as it's too annoying to log these common events.
-                        crossterm::event::MouseEventKind::Drag(_) => continue,
-                        crossterm::event::MouseEventKind::Moved => {
-                            self.engine.send_pointer_event(
-                                FlutterPointerPhase::Hover,
-                                column as f64,
-                                row as f64,
-                                FlutterPointerSignalKind::None,
-                                0.0,
-                                vec![],
-                            )?;
-                        }
-                        crossterm::event::MouseEventKind::ScrollUp => {
-                            self.engine.send_pointer_event(
-                                FlutterPointerPhase::Up,
-                                column as f64,
-                                row as f64,
-                                FlutterPointerSignalKind::Scroll,
-                                -SCROLL_DELTA,
-                                vec![],
-                            )?;
-                        }
-                        crossterm::event::MouseEventKind::ScrollDown => {
-                            self.engine.send_pointer_event(
-                                FlutterPointerPhase::Down,
-                                column as f64,
-                                row as f64,
-                                FlutterPointerSignalKind::Scroll,
-                                SCROLL_DELTA,
-                                vec![],
-                            )?;
-                        }
-                    };
+        Ok(())
+    }
+
+    fn read_input(&self) -> Result<(), flutter_sys::Error> {
+        // TODO poll
+        match read().unwrap() {
+            crossterm::event::Event::FocusGained => todo!(),
+            crossterm::event::Event::FocusLost => todo!(),
+            crossterm::event::Event::Key(KeyEvent {
+                code, modifiers, ..
+            }) => {
+                if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('c') {
+                    return Ok(());
                 }
-                crossterm::event::Event::Paste(_) => todo!(),
-                crossterm::event::Event::Resize(columns, rows) => {
-                    self.engine.send_window_metrics_event(
-                        columns as usize,
-                        // The terminal renderer merges two pixels (top and bottom) into one.
-                        (rows * 2) as usize,
-                        // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so compressed?
-                        PIXEL_RATIO,
-                    )?;
+                if let KeyCode::Char(c) = code {
+                    self.engine.send_key_event(KeyEventType::Down, c)?;
+                    self.engine.send_key_event(KeyEventType::Up, c)?;
+                }
+                Ok(())
+            }
+            crossterm::event::Event::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: _,
+            }) => {
+                // The terminal renderer merges two pixels (top and bottom) into one.
+                let row = row * 2;
+
+                match kind {
+                    crossterm::event::MouseEventKind::Down(mouse_button) => {
+                        // (SafePointerPhase::Down, to_mouse_button(mouse_button))
+                        self.engine.send_pointer_event(
+                            FlutterPointerPhase::Down,
+                            column as f64,
+                            row as f64,
+                            FlutterPointerSignalKind::None,
+                            0.0,
+                            vec![to_mouse_button(mouse_button)],
+                        )?;
+                        Ok(())
+                    }
+                    crossterm::event::MouseEventKind::Up(mouse_button) => {
+                        self.engine.send_pointer_event(
+                            FlutterPointerPhase::Up,
+                            column as f64,
+                            row as f64,
+                            FlutterPointerSignalKind::None,
+                            0.0,
+                            vec![to_mouse_button(mouse_button)],
+                        )?;
+                        Ok(())
+                    }
+                    // Just continue as it's too annoying to log these common events.
+                    crossterm::event::MouseEventKind::Drag(_) => Ok(()),
+                    crossterm::event::MouseEventKind::Moved => {
+                        self.engine.send_pointer_event(
+                            FlutterPointerPhase::Hover,
+                            column as f64,
+                            row as f64,
+                            FlutterPointerSignalKind::None,
+                            0.0,
+                            vec![],
+                        )?;
+                        Ok(())
+                    }
+                    crossterm::event::MouseEventKind::ScrollUp => {
+                        self.engine.send_pointer_event(
+                            FlutterPointerPhase::Up,
+                            column as f64,
+                            row as f64,
+                            FlutterPointerSignalKind::Scroll,
+                            -SCROLL_DELTA,
+                            vec![],
+                        )?;
+                        Ok(())
+                    }
+                    crossterm::event::MouseEventKind::ScrollDown => {
+                        self.engine.send_pointer_event(
+                            FlutterPointerPhase::Down,
+                            column as f64,
+                            row as f64,
+                            FlutterPointerSignalKind::Scroll,
+                            SCROLL_DELTA,
+                            vec![],
+                        )?;
+                        Ok(())
+                    }
                 }
             }
+            crossterm::event::Event::Paste(_) => todo!(),
+            crossterm::event::Event::Resize(columns, rows) => {
+                self.engine.send_window_metrics_event(
+                    columns as usize,
+                    // The terminal renderer merges two pixels (top and bottom) into one.
+                    (rows * 2) as usize,
+                    // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so compressed?
+                    PIXEL_RATIO,
+                )?;
+                Ok(())
+            }
         }
-        Ok(())
     }
 }
 
