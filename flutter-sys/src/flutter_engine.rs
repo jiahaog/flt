@@ -2,7 +2,7 @@ use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::task_runner::{self, Task, TaskRunner, UserData};
+use crate::task_runner::{TaskRunner, UserData};
 use crate::{sys, KeyEventType};
 use std::slice;
 use std::time::{Duration, Instant};
@@ -90,10 +90,6 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
     pub fn get_task_runner(&self) -> &TaskRunner<T> {
         &self.user_data.task_runner
     }
-
-    // pub fn run(&mut self) -> Result<(), Error> {
-    //     self.get_task_runner().run(self)
-    // }
 
     pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
         let result =
@@ -274,6 +270,9 @@ pub enum Error {
     InvalidLibraryVersion,
     InvalidArguments,
     InternalConsistency,
+
+    // TODO(jiahaog): This shouldn't be here.
+    UserTerminated,
 }
 
 impl From<sys::FlutterEngineResult> for Error {

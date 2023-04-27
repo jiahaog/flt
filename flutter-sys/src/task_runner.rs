@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, thread::ThreadId};
+use std::{sync::Mutex, thread::ThreadId};
 
 use crate::{sys, EmbedderCallbacks, Error, FlutterEngine};
 
@@ -63,75 +63,45 @@ impl<T: EmbedderCallbacks> UserData<T> {
 }
 
 pub struct TaskRunner<T: EmbedderCallbacks> {
-    inner: Rc<RefCell<TaskRunnerInner<T>>>,
+    // This is a mutex because post_task can be called from any thread, such
+    // as in the [post_task_callback].
+    //
+    // Interior mutability is also needed for the methods below, otherwise there
+    // will be no way to get a mutable borrow to this task runner from the
+    // [FlutterEngine], *and* call one of the methods that also requires a
+    // mutable borrow.
+    tasks: Mutex<Vec<Box<dyn Task<T>>>>,
 }
 
 impl<T: EmbedderCallbacks> TaskRunner<T> {
     pub fn new() -> Self {
         Self {
-            inner: Rc::new(RefCell::new(TaskRunnerInner::new())),
+            tasks: Mutex::new(vec![]),
         }
     }
 
-    pub fn post_task(&mut self, task: impl Task<T> + 'static) {
-        self.inner.borrow_mut().post_task(task);
+    pub fn post_task(&self, task: impl Task<T> + 'static) {
+        self.tasks.lock().unwrap().push(Box::new(task));
     }
 
-    pub fn run(&self, engine: &FlutterEngine<T>) -> Result<(), Error> {
-        self.inner.borrow_mut().run(engine)
-    }
-}
+    pub fn run_expired_tasks(&self, engine: &FlutterEngine<T>) -> Result<(), Error> {
+        let mut tasks = self.tasks.lock().unwrap();
 
-impl<T: EmbedderCallbacks> Clone for TaskRunner<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-struct TaskRunnerInner<T: EmbedderCallbacks> {
-    tasks: VecDeque<Box<dyn Task<T>>>,
-}
-
-impl<T: EmbedderCallbacks> TaskRunnerInner<T> {
-    pub fn new() -> Self {
-        Self {
-            tasks: VecDeque::new().into(),
-        }
-    }
-
-    pub fn post_task(&mut self, task: impl Task<T> + 'static) {
-        println!("posttask borrow");
-        let x = self.tasks.push_back(Box::new(task));
-        println!("posttask release");
-        x
-    }
-
-    // /// When the result is successful, returns the task when the task was not run.
-    pub fn maybe_run_now(
-        &mut self,
-        engine: &FlutterEngine<T>,
-        task: Box<dyn Task<T>>,
-    ) -> Result<Option<Box<dyn Task<T>>>, Error> {
-        if !task.can_run_now() {
-            return Ok(Some(task));
-        }
-
-        task.run(engine)?;
-
-        Ok(None)
-    }
-
-    pub fn run(&mut self, engine: &FlutterEngine<T>) -> Result<(), Error> {
-        loop {
-            {
-                if let Some(task) = self.tasks.pop_front() {
-                    if let Some(task) = self.maybe_run_now(engine, task)? {
-                        self.tasks.push_back(task);
-                    }
-                };
+        let mut not_run_tasks = vec![];
+        // TODO(jiahaog): The nightly drain_filter will help here.
+        // TODO(jiahaog): Or just use a priority queue.
+        for task in tasks.drain(..) {
+            if task.can_run_now() {
+                task.run(engine)?;
+            } else {
+                not_run_tasks.push(task);
             }
         }
+
+        for task in not_run_tasks {
+            tasks.push(task);
+        }
+
+        Ok(())
     }
 }

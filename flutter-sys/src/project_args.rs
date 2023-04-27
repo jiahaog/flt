@@ -37,7 +37,6 @@ extern "C" fn post_task_callback<T: EmbedderCallbacks>(
     target_time_nanos: u64,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let run_now = runs_task_on_current_thread_callback::<T>(user_data);
     let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
 
     let task = EngineTask::new(target_time_nanos, task);
@@ -142,7 +141,7 @@ extern "C" fn update_semantics_callback(
     _semantics_update: *const sys::FlutterSemanticsUpdate,
     _user_data: *mut ::std::os::raw::c_void,
 ) {
-    println!("update semantics callback");
+    // println!("update semantics callback");
     // let sys::FlutterSemanticsUpdate {
     //     nodes_count, nodes, ..
     // } = unsafe { *semantics_update };
