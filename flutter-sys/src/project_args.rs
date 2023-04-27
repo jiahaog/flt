@@ -136,33 +136,30 @@ fn to_string(c_str: *const std::os::raw::c_char) -> String {
     message.to_str().unwrap().to_string()
 }
 
-#[allow(unused)]
 extern "C" fn update_semantics_callback(
-    _semantics_update: *const sys::FlutterSemanticsUpdate,
+    semantics_update: *const sys::FlutterSemanticsUpdate,
     _user_data: *mut ::std::os::raw::c_void,
 ) {
-    // println!("update semantics callback");
-    // let sys::FlutterSemanticsUpdate {
-    //     nodes_count, nodes, ..
-    // } = unsafe { *semantics_update };
+    println!("update semantics");
+    let sys::FlutterSemanticsUpdate {
+        nodes_count, nodes, ..
+    } = unsafe { *semantics_update };
 
-    // let nodes = unsafe { std::slice::from_raw_parts(nodes, nodes_count) };
+    let nodes = unsafe { std::slice::from_raw_parts(nodes, nodes_count) };
 
-    // let tree = FlutterSemanticsTree::from_nodes(nodes);
-    // println!("root: {:?}", tree.root());
+    let tree = FlutterSemanticsTree::from_nodes(nodes);
+    println!("root: {:?}", tree.root());
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 struct FlutterSemanticsTree<'a> {
     map: HashMap<i32, &'a sys::FlutterSemanticsNode>,
 }
 
-#[allow(unused)]
 impl<'a> FlutterSemanticsTree<'a> {
     fn from_nodes(nodes: &'a [sys::FlutterSemanticsNode]) -> Self {
         Self {
-            map: nodes.into_iter().map(|node| (node.id, node)).collect(),
+            map: dbg!(nodes.into_iter().map(|node| (node.id, node)).collect()),
         }
     }
 
@@ -173,6 +170,7 @@ impl<'a> FlutterSemanticsTree<'a> {
     }
 
     fn root_recur(&self, id: i32) -> FlutterSemanticsNode {
+        println!("blah {:?}", id);
         let &&sys::FlutterSemanticsNode {
             children_in_traversal_order,
             child_count,
@@ -180,13 +178,17 @@ impl<'a> FlutterSemanticsTree<'a> {
             ..
         } = self.map.get(&id).expect("Node ID must always be present");
 
-        let children_ids =
-            unsafe { std::slice::from_raw_parts(children_in_traversal_order, child_count) };
+        let children = if children_in_traversal_order == std::ptr::null() {
+            vec![]
+        } else {
+            let children_ids =
+                unsafe { std::slice::from_raw_parts(children_in_traversal_order, child_count) };
 
-        let children = children_ids
-            .into_iter()
-            .map(|id| self.root_recur(*id))
-            .collect();
+            children_ids
+                .into_iter()
+                .map(|id| self.root_recur(*id))
+                .collect()
+        };
 
         FlutterSemanticsNode {
             children,
@@ -195,7 +197,6 @@ impl<'a> FlutterSemanticsTree<'a> {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 pub struct FlutterSemanticsNode {
     children: Vec<FlutterSemanticsNode>,
