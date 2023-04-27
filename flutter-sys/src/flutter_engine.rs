@@ -2,7 +2,7 @@ use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::task_runner::UserData;
+use crate::task_runner::{self, Task, TaskRunner, UserData};
 use crate::{sys, KeyEventType};
 use std::slice;
 use std::time::{Duration, Instant};
@@ -13,6 +13,7 @@ pub struct FlutterEngine<T: EmbedderCallbacks> {
     // stack, there is a chance that the value is dropped when the
     // callbacks still reference it).
     user_data: Box<UserData<T>>,
+    // TODO(jiahaog): Remove this and introduce a clock instead.
     engine_start_time: Duration,
     start_instant: Instant,
 }
@@ -39,6 +40,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             callbacks,
             std::ptr::null_mut(),
             std::thread::current().id(),
+            TaskRunner::new(),
         ));
 
         let user_data_ptr: *mut UserData<T> = &mut *user_data;
@@ -75,19 +77,23 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
         })
     }
 
-    pub fn run<F: Fn() -> Result<(), Error>>(&mut self, callback: F) -> Result<(), Error> {
-        self.user_data.run(callback)
-    }
-
     /// Returns a duration from when the Flutter Engine was started.
     fn duration_from_start(&self) -> Duration {
         // Always offset instants from `engine_start_time` to match the engine time base.
         Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 
-    fn get_engine(&self) -> sys::FlutterEngine {
+    pub(crate) fn get_engine(&self) -> sys::FlutterEngine {
         self.user_data.engine
     }
+
+    pub fn get_task_runner(&self) -> &TaskRunner<T> {
+        &self.user_data.task_runner
+    }
+
+    // pub fn run(&mut self) -> Result<(), Error> {
+    //     self.get_task_runner().run(self)
+    // }
 
     pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
         let result =

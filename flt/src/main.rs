@@ -20,7 +20,8 @@ fn main() -> Result<(), flt::Error> {
 
     let mut embedder =
         flt::TerminalEmbedder::new(&args.assets_dir, &args.icu_data_path, args.simple_output)?;
-    embedder.wait_for_input()?;
+    embedder.run();
+    // embedder.wait_for_input()?;
 
     Ok(())
 }

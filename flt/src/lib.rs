@@ -1,7 +1,7 @@
 use crossterm::event::{read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
-    EmbedderCallbacks, FlutterEngine, FlutterPointerMouseButton, FlutterPointerPhase,
-    FlutterPointerSignalKind, KeyEventType, Pixel,
+    task_runner::TaskRunner, EmbedderCallbacks, FlutterEngine, FlutterPointerMouseButton,
+    FlutterPointerPhase, FlutterPointerSignalKind, KeyEventType, Pixel,
 };
 use terminal_window::TerminalWindow;
 
@@ -38,11 +38,9 @@ impl TerminalEmbedder {
         Ok(embedder)
     }
 
-    pub fn wait_for_input(&mut self) -> Result<(), Error> {
-        self.engine.run(|| {
-            // self.read_input()?;
-            Ok(())
-        })?;
+    pub fn run(&mut self) -> Result<(), Error> {
+        let task_runner = self.engine.get_task_runner();
+        task_runner.run(&self.engine)?;
 
         Ok(())
     }

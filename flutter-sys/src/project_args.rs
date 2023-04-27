@@ -1,7 +1,7 @@
 use crate::{
     embedder_callbacks::EmbedderCallbacks,
     sys,
-    task_runner::{Task, UserData},
+    task_runner::{EngineTask, UserData},
 };
 use std::{
     collections::HashMap,
@@ -40,17 +40,9 @@ extern "C" fn post_task_callback<T: EmbedderCallbacks>(
     let run_now = runs_task_on_current_thread_callback::<T>(user_data);
     let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
 
-    let task = Task::new(target_time_nanos, task);
+    let task = EngineTask::new(target_time_nanos, task);
 
-    let task_to_run = if run_now {
-        user_data.maybe_run_now(task).unwrap()
-    } else {
-        Some(task)
-    };
-
-    if let Some(task_to_run) = task_to_run {
-        user_data.post_task(task_to_run);
-    };
+    user_data.task_runner.post_task(task);
 }
 
 impl FlutterProjectArgs {
