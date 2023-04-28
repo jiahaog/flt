@@ -1,6 +1,6 @@
 use std::{sync::Mutex, thread::ThreadId};
 
-use crate::{sys, EmbedderCallbacks, Error, FlutterEngine};
+use crate::{semantics::FlutterSemanticsTree, sys, EmbedderCallbacks, Error, FlutterEngine};
 
 pub trait Task<T: EmbedderCallbacks> {
     fn run(&self, engine: &FlutterEngine<T>) -> Result<(), Error>;
@@ -44,6 +44,7 @@ pub struct UserData<T: EmbedderCallbacks> {
     pub engine: sys::FlutterEngine,
     pub platform_thread_id: ThreadId,
     pub task_runner: TaskRunner<T>,
+    pub semantics_tree: FlutterSemanticsTree,
 }
 
 impl<T: EmbedderCallbacks> UserData<T> {
@@ -58,6 +59,7 @@ impl<T: EmbedderCallbacks> UserData<T> {
             engine,
             platform_thread_id: thread_id,
             task_runner,
+            semantics_tree: FlutterSemanticsTree::new(),
         }
     }
 }

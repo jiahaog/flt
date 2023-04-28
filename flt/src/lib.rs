@@ -59,6 +59,10 @@ impl EmbedderCallbacks for TerminalEmbedderCallbacks {
     fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
         self.terminal_window.draw(width, height, buffer).unwrap()
     }
+
+    fn draw_text(&mut self, x: usize, y: usize, text: &str) {
+        self.terminal_window.draw_text(x, y, text).unwrap()
+    }
 }
 
 #[derive(Debug)]

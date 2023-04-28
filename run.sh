@@ -55,6 +55,7 @@ elif [ "$mode" = 'asan' ]; then
     cargo run \
       -Zbuild-std --target x86_64-unknown-linux-gnu \
       -- \
+      --simple-output \
       "${FLT_ARGS[@]}"
 else
   cargo run -- "${FLT_ARGS[@]}"
