@@ -7,7 +7,7 @@ use std::iter::zip;
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-use crossterm::style::{Color, PrintStyledContent, Stylize};
+use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -76,6 +76,14 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
+    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), Error> {
+        self.stdout.queue(MoveTo(x as u16, y as u16))?;
+        self.stdout.queue(Print(text))?;
+        self.stdout.flush()?;
+
+        Ok(())
+    }
+
     pub fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) -> Result<(), Error> {
         if self.simple_output {
             return Ok(());
