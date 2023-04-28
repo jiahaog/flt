@@ -2,10 +2,6 @@
 //!
 //! This should be the only file in this crate which depends on [crossterm].
 
-use std::io::{stdout, Stdout, Write};
-use std::iter::zip;
-use std::sync::Mutex;
-
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
@@ -14,6 +10,8 @@ use crossterm::terminal::{
 };
 use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
+use std::io::{stdout, Stdout, Write};
+use std::iter::zip;
 
 pub struct TerminalWindow {
     // This mutex is because the struct can be accessed on multiple threads
@@ -23,7 +21,7 @@ pub struct TerminalWindow {
     // races the appear in the output.
     // TODO(jiahaog): Consider using a event driven structure on the main thread
     // instead.
-    stdout: Mutex<Stdout>,
+    stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
     simple_output: bool,
 }
@@ -48,7 +46,7 @@ impl TerminalWindow {
         }
 
         Self {
-            stdout: Mutex::new(stdout),
+            stdout,
             lines: vec![],
             simple_output,
         }
@@ -74,22 +72,20 @@ fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
 
 impl Drop for TerminalWindow {
     fn drop(&mut self) {
-        let mut stdout = self.stdout.lock().unwrap();
         if !self.simple_output {
-            stdout.execute(DisableMouseCapture).unwrap();
+            self.stdout.execute(DisableMouseCapture).unwrap();
             disable_raw_mode().unwrap();
-            stdout.execute(Show).unwrap();
-            stdout.execute(LeaveAlternateScreen).unwrap();
+            self.stdout.execute(Show).unwrap();
+            self.stdout.execute(LeaveAlternateScreen).unwrap();
         }
     }
 }
 
 impl TerminalWindow {
     pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), Error> {
-        let mut stdout = self.stdout.lock().unwrap();
-        stdout.queue(MoveTo(x as u16, y as u16))?;
-        stdout.queue(Print(text))?;
-        stdout.flush()?;
+        self.stdout.queue(MoveTo(x as u16, y as u16))?;
+        self.stdout.queue(Print(text))?;
+        self.stdout.flush()?;
 
         Ok(())
     }
@@ -170,21 +166,19 @@ impl TerminalWindow {
             self.lines = vec![vec![]; lines.len()];
         }
 
-        let mut stdout = self.stdout.lock().unwrap();
-
         for (i, (prev, current)) in zip(&self.lines, &lines).enumerate() {
             if !do_vecs_match(prev, current) {
-                stdout.queue(MoveTo(0, i as u16))?;
+                self.stdout.queue(MoveTo(0, i as u16))?;
 
                 for TerminalCell { top, bottom } in current {
-                    stdout.queue(PrintStyledContent(
+                    self.stdout.queue(PrintStyledContent(
                         BLOCK_UPPER.to_string().with(*top).on(*bottom),
                     ))?;
                 }
             }
         }
 
-        stdout.flush()?;
+        self.stdout.flush()?;
 
         self.lines = lines;
 

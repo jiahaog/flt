@@ -1,6 +1,13 @@
 use constants::{FPS, PIXEL_RATIO};
-
-use flutter_sys::{task_runner::Task, EmbedderCallbacks, FlutterEngine, Pixel};
+use flutter_sys::task_runner::TaskRunner;
+use flutter_sys::{
+    task_runner::PlatformTask, EmbedderCallbacks, FlutterEngine, FlutterSemanticsTree, Pixel,
+};
+use std::io::Write;
+use std::{
+    fs::File,
+    sync::mpsc::{channel, Receiver},
+};
 use terminal_event_task::TerminalEventTask;
 use terminal_window::TerminalWindow;
 
@@ -10,6 +17,10 @@ mod terminal_window;
 
 pub struct TerminalEmbedder {
     engine: FlutterEngine<TerminalEmbedderCallbacks>,
+    platform_task_channel: Receiver<PlatformTask>,
+    semantics_tree: FlutterSemanticsTree,
+    callbacks: TerminalEmbedderCallbacks,
+    platform_task_runner: TaskRunner<TerminalEmbedderCallbacks>,
 }
 
 impl TerminalEmbedder {
@@ -20,8 +31,16 @@ impl TerminalEmbedder {
 
         let (width, height) = callbacks.terminal_window.size();
 
+        let (sender, receiver) = channel();
+
         let embedder = Self {
-            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
+            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks, sender)?,
+            platform_task_channel: receiver,
+            semantics_tree: FlutterSemanticsTree::new(),
+            callbacks: TerminalEmbedderCallbacks {
+                terminal_window: TerminalWindow::new(simple_output),
+            },
+            platform_task_runner: TaskRunner::new(),
         };
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
@@ -34,14 +53,29 @@ impl TerminalEmbedder {
     }
 
     pub fn run_event_loop(&mut self) -> Result<(), Error> {
-        let task_runner = self.engine.get_task_runner();
-
         loop {
-            // TODO(jiahaog): Make this work instead of the following line.
-            // task_runner.post_task(TerminalEventTask {});
-            TerminalEventTask {}.run(&self.engine)?;
+            if let Ok(platform_task) = self.platform_task_channel.try_recv() {
+                match platform_task {
+                    PlatformTask::UpdateSemantics(updates) => {
+                        self.semantics_tree.update(updates);
 
-            task_runner.run_expired_tasks(&self.engine)?;
+                        self.semantics_tree.write_to(&mut self.callbacks);
+                        let mut f = File::create("/tmp/semantics.txt").unwrap();
+
+                        writeln!(f, "{:#?}", self.semantics_tree).unwrap();
+                    }
+                    PlatformTask::Draw {
+                        width,
+                        height,
+                        buffer,
+                    } => self.callbacks.draw(width, height, buffer),
+                    PlatformTask::EngineTask(engine_task) => {
+                        self.platform_task_runner.post_task(engine_task);
+                    }
+                }
+            }
+            self.platform_task_runner.post_task(TerminalEventTask {});
+            self.platform_task_runner.run_expired_tasks(&self.engine)?;
         }
     }
 }

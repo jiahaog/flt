@@ -1,9 +1,8 @@
+use crate::task_runner::{PlatformTask, SemanticsUpdate};
 use crate::{ffi::to_string, sys, task_runner::UserData, EmbedderCallbacks};
-use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    fs::File,
 };
 
 pub(crate) extern "C" fn update_semantics_callback<T: EmbedderCallbacks>(
@@ -39,27 +38,24 @@ pub(crate) extern "C" fn update_semantics_callback<T: EmbedderCallbacks>(
                 }
                 .to_vec();
 
-                (
+                SemanticsUpdate {
                     id,
                     children,
-                    FlutterSemanticsNode {
+                    node: FlutterSemanticsNode {
                         label: to_string(label),
                         flags: to_flags(flags),
                         value: to_string(value),
                         rect,
                         transform,
                     },
-                )
+                }
             },
         )
         .collect();
-
-    user_data.semantics_tree.update(updates);
-
-    user_data.semantics_tree.write_to(&mut user_data.callbacks);
-    let mut f = File::create("/tmp/semantics.txt").unwrap();
-
-    writeln!(f, "{:#?}", user_data.semantics_tree).unwrap();
+    user_data
+        .platform_task_channel
+        .send(PlatformTask::UpdateSemantics(updates))
+        .unwrap();
 }
 
 pub struct FlutterSemanticsTree {
@@ -74,15 +70,15 @@ impl FlutterSemanticsTree {
             adjacency_list: HashMap::new(),
         }
     }
-    pub fn update(&mut self, updates: Vec<(i32, Vec<i32>, FlutterSemanticsNode)>) {
-        for (id, children, node) in updates {
+    pub fn update(&mut self, updates: Vec<SemanticsUpdate>) {
+        for SemanticsUpdate { id, children, node } in updates {
             self.id_map.insert(id, node);
 
             self.adjacency_list.insert(id, children);
         }
     }
 
-    fn write_to<T: EmbedderCallbacks>(&self, callbacks: &mut T) -> () {
+    pub fn write_to<T: EmbedderCallbacks>(&self, callbacks: &mut T) -> () {
         self.draw_text(callbacks, ROOT_ID, sys::FlutterTransformation::empty());
     }
 

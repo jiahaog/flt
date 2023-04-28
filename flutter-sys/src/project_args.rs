@@ -3,7 +3,7 @@ use crate::{
     ffi::to_string,
     semantics::update_semantics_callback,
     sys,
-    task_runner::{EngineTask, UserData},
+    task_runner::{EngineTask, PlatformTask, UserData},
 };
 use std::ffi::CString;
 
@@ -40,7 +40,10 @@ extern "C" fn post_task_callback<T: EmbedderCallbacks>(
 
     let task = EngineTask::new(target_time_nanos, task);
 
-    user_data.task_runner.post_task(task);
+    user_data
+        .platform_task_channel
+        .send(PlatformTask::EngineTask(task))
+        .unwrap();
 }
 
 impl FlutterProjectArgs {

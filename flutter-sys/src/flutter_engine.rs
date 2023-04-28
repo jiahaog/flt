@@ -2,9 +2,10 @@ use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::task_runner::{TaskRunner, UserData};
+use crate::task_runner::{PlatformTask, UserData};
 use crate::{sys, KeyEventType};
 use std::slice;
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 pub struct FlutterEngine<T: EmbedderCallbacks> {
@@ -25,7 +26,12 @@ impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
 }
 
 impl<T: EmbedderCallbacks> FlutterEngine<T> {
-    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: T) -> Result<Self, Error> {
+    pub fn new(
+        assets_dir: &str,
+        icu_data_path: &str,
+        callbacks: T,
+        platform_task_channel: Sender<PlatformTask>,
+    ) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
             __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
@@ -40,7 +46,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             callbacks,
             std::ptr::null_mut(),
             std::thread::current().id(),
-            TaskRunner::new(),
+            platform_task_channel,
         ));
 
         let user_data_ptr: *mut UserData<T> = &mut *user_data;
@@ -85,10 +91,6 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
 
     pub(crate) fn get_engine(&self) -> sys::FlutterEngine {
         self.user_data.engine
-    }
-
-    pub fn get_task_runner(&self) -> &TaskRunner<T> {
-        &self.user_data.task_runner
     }
 
     pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
@@ -233,7 +235,7 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].
-    let buf = allocation
+    let buffer = allocation
         .chunks(4)
         .into_iter()
         .map(|c| {
@@ -260,7 +262,14 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     */
     let width = row_bytes / 4;
 
-    user_data.callbacks.draw(width, height, buf);
+    user_data
+        .platform_task_channel
+        .send(PlatformTask::Draw {
+            width,
+            height,
+            buffer,
+        })
+        .unwrap();
 
     return true;
 }

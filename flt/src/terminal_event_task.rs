@@ -1,10 +1,9 @@
-use std::time::Duration;
-
 use crossterm::event::{poll, read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
     task_runner::Task, EmbedderCallbacks, FlutterEngine, FlutterPointerMouseButton,
     FlutterPointerPhase, FlutterPointerSignalKind, KeyEventType,
 };
+use std::time::Duration;
 
 use crate::constants::{PIXEL_RATIO, SCROLL_DELTA};
 
@@ -12,7 +11,7 @@ pub(crate) struct TerminalEventTask {}
 
 impl<T: EmbedderCallbacks> Task<T> for TerminalEventTask {
     fn run(&self, engine: &FlutterEngine<T>) -> Result<(), flutter_sys::Error> {
-        if !poll(Duration::from_millis(16)).unwrap() {
+        if !poll(Duration::from_millis(1)).unwrap() {
             return Ok(());
         }
 

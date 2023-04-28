@@ -14,3 +14,4 @@ pub use flutter_engine::*;
 pub use key::*;
 pub use pixel::*;
 pub use pointer::*;
+pub use semantics::*;

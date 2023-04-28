@@ -1,6 +1,5 @@
-use std::{sync::Mutex, thread::ThreadId};
-
-use crate::{semantics::FlutterSemanticsTree, sys, EmbedderCallbacks, Error, FlutterEngine};
+use crate::{semantics::FlutterSemanticsNode, sys, EmbedderCallbacks, Error, FlutterEngine, Pixel};
+use std::{sync::mpsc::Sender, thread::ThreadId};
 
 pub trait Task<T: EmbedderCallbacks> {
     fn run(&self, engine: &FlutterEngine<T>) -> Result<(), Error>;
@@ -8,6 +7,7 @@ pub trait Task<T: EmbedderCallbacks> {
     fn can_run_now(&self) -> bool;
 }
 
+#[derive(Debug)]
 pub struct EngineTask {
     target_time_nanos: u64,
     flutter_task: sys::FlutterTask,
@@ -43,8 +43,25 @@ pub struct UserData<T: EmbedderCallbacks> {
     // Remove this from user data?
     pub engine: sys::FlutterEngine,
     pub platform_thread_id: ThreadId,
-    pub task_runner: TaskRunner<T>,
-    pub semantics_tree: FlutterSemanticsTree,
+    pub platform_task_channel: Sender<PlatformTask>,
+}
+
+#[derive(Debug)]
+pub enum PlatformTask {
+    UpdateSemantics(Vec<SemanticsUpdate>),
+    Draw {
+        width: usize,
+        height: usize,
+        buffer: Vec<Pixel>,
+    },
+    EngineTask(EngineTask),
+}
+
+#[derive(Debug)]
+pub struct SemanticsUpdate {
+    pub id: i32,
+    pub children: Vec<i32>,
+    pub node: FlutterSemanticsNode,
 }
 
 impl<T: EmbedderCallbacks> UserData<T> {
@@ -52,14 +69,13 @@ impl<T: EmbedderCallbacks> UserData<T> {
         callbacks: T,
         engine: sys::FlutterEngine,
         thread_id: ThreadId,
-        task_runner: TaskRunner<T>,
+        platform_task_channel: Sender<PlatformTask>,
     ) -> Self {
         Self {
             callbacks,
             engine,
             platform_thread_id: thread_id,
-            task_runner,
-            semantics_tree: FlutterSemanticsTree::new(),
+            platform_task_channel,
         }
     }
 }
@@ -72,27 +88,23 @@ pub struct TaskRunner<T: EmbedderCallbacks> {
     // will be no way to get a mutable borrow to this task runner from the
     // [FlutterEngine], *and* call one of the methods that also requires a
     // mutable borrow.
-    tasks: Mutex<Vec<Box<dyn Task<T>>>>,
+    tasks: Vec<Box<dyn Task<T>>>,
 }
 
 impl<T: EmbedderCallbacks> TaskRunner<T> {
     pub fn new() -> Self {
-        Self {
-            tasks: Mutex::new(vec![]),
-        }
+        Self { tasks: vec![] }
     }
 
-    pub fn post_task(&self, task: impl Task<T> + 'static) {
-        self.tasks.lock().unwrap().push(Box::new(task));
+    pub fn post_task(&mut self, task: impl Task<T> + 'static) {
+        self.tasks.push(Box::new(task));
     }
 
-    pub fn run_expired_tasks(&self, engine: &FlutterEngine<T>) -> Result<(), Error> {
-        let mut tasks = self.tasks.lock().unwrap();
-
+    pub fn run_expired_tasks(&mut self, engine: &FlutterEngine<T>) -> Result<(), Error> {
         let mut not_run_tasks = vec![];
         // TODO(jiahaog): The nightly drain_filter will help here.
         // TODO(jiahaog): Or just use a priority queue.
-        for task in tasks.drain(..) {
+        for task in self.tasks.drain(..) {
             if task.can_run_now() {
                 task.run(engine)?;
             } else {
@@ -101,7 +113,7 @@ impl<T: EmbedderCallbacks> TaskRunner<T> {
         }
 
         for task in not_run_tasks {
-            tasks.push(task);
+            self.tasks.push(task);
         }
 
         Ok(())
