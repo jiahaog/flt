@@ -88,6 +88,10 @@ impl Drop for TerminalWindow {
 
 impl TerminalWindow {
     pub(crate) fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), ErrorKind> {
+        if self.simple_output {
+            return Ok(());
+        }
+
         self.stdout.queue(MoveTo(x as u16, y as u16))?;
         self.stdout.queue(Print(text))?;
         self.stdout.flush()?;
