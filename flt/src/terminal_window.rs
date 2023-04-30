@@ -12,6 +12,7 @@ use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
+use std::ops::Add;
 use std::sync::mpsc::{channel, Receiver};
 use std::thread::{self};
 
@@ -41,6 +42,7 @@ impl TerminalWindow {
             let mut should_run = true;
             while should_run {
                 let event = read().unwrap();
+                let event = normalize_event_height(event);
                 should_run = sender.send(event).is_ok();
             }
         });
@@ -59,11 +61,26 @@ impl TerminalWindow {
 
     pub(crate) fn size(&self) -> (usize, usize) {
         let (width, height) = size().unwrap();
-        (
-            width as usize,
-            // The terminal renderer merges two pixels (top and bottom) into one.
-            (height * 2) as usize,
-        )
+        (width as usize, to_external_height(height) as usize)
+    }
+}
+
+fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
+    internal_height + internal_height
+}
+
+fn to_internal_height(external_height: usize) -> usize {
+    external_height / 2
+}
+
+fn normalize_event_height(event: Event) -> Event {
+    match event {
+        Event::Resize(columns, rows) => Event::Resize(columns, to_external_height(rows)),
+        Event::Mouse(mut mouse_event) => {
+            mouse_event.row = to_external_height(mouse_event.row);
+            Event::Mouse(mouse_event)
+        }
+        x => x,
     }
 }
 
@@ -91,6 +108,8 @@ impl TerminalWindow {
         if self.simple_output {
             return Ok(());
         }
+
+        let y = to_internal_height(y);
 
         self.stdout.queue(MoveTo(x as u16, y as u16))?;
         self.stdout.queue(Print(text))?;

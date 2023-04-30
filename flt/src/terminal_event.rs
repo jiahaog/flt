@@ -31,9 +31,6 @@ pub(crate) fn handle_terminal_event(
             row,
             modifiers: _,
         }) => {
-            // The terminal renderer merges two pixels (top and bottom) into one.
-            let row = row * 2;
-
             match kind {
                 crossterm::event::MouseEventKind::Down(mouse_button) => {
                     // (SafePointerPhase::Down, to_mouse_button(mouse_button))
@@ -99,8 +96,7 @@ pub(crate) fn handle_terminal_event(
         crossterm::event::Event::Resize(columns, rows) => {
             engine.send_window_metrics_event(
                 columns as usize,
-                // The terminal renderer merges two pixels (top and bottom) into one.
-                (rows * 2) as usize,
+                rows as usize,
                 // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so compressed?
                 PIXEL_RATIO,
             )?;

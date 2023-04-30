@@ -67,7 +67,7 @@ pub(crate) fn draw_semantic_labels(
     {
         terminal_window.draw_text(
             (transform.transX * transform.scaleX).round() as usize,
-            (transform.transY * transform.scaleY / 2.0).round() as usize,
+            (transform.transY * transform.scaleY).round() as usize,
             &current.label,
         )?;
     }
