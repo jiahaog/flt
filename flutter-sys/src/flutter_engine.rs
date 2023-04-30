@@ -1,35 +1,34 @@
-use crate::embedder_callbacks::EmbedderCallbacks;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::task_runner::{PlatformTask, UserData};
+use crate::tasks::PlatformTask;
+use crate::user_data::UserData;
 use crate::{sys, KeyEventType};
 use std::slice;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-pub struct FlutterEngine<T: EmbedderCallbacks> {
+pub struct FlutterEngine {
     // `UserData` needs to be on the heap so that the Flutter Engine
     // callbacks can safely provide a pointer to it (if it was on the
     // stack, there is a chance that the value is dropped when the
     // callbacks still reference it).
-    user_data: Box<UserData<T>>,
+    user_data: Box<UserData>,
     // TODO(jiahaog): Remove this and introduce a clock instead.
     engine_start_time: Duration,
     start_instant: Instant,
 }
 
-impl<T: EmbedderCallbacks> Drop for FlutterEngine<T> {
+impl Drop for FlutterEngine {
     fn drop(&mut self) {
         unsafe { sys::FlutterEngineShutdown(self.get_engine()) };
     }
 }
 
-impl<T: EmbedderCallbacks> FlutterEngine<T> {
+impl FlutterEngine {
     pub fn new(
         assets_dir: &str,
         icu_data_path: &str,
-        callbacks: T,
         platform_task_channel: Sender<PlatformTask>,
     ) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
@@ -37,22 +36,21 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
                 software: sys::FlutterSoftwareRendererConfig {
                     struct_size: std::mem::size_of::<sys::FlutterSoftwareRendererConfig>(),
-                    surface_present_callback: Some(software_surface_present_callback::<T>),
+                    surface_present_callback: Some(software_surface_present_callback),
                 },
             },
         };
 
         let mut user_data = Box::new(UserData::new(
-            callbacks,
             std::ptr::null_mut(),
             std::thread::current().id(),
             platform_task_channel,
         ));
 
-        let user_data_ptr: *mut UserData<T> = &mut *user_data;
+        let user_data_ptr: *mut UserData = &mut *user_data;
         let user_data_ptr: *mut std::ffi::c_void = user_data_ptr as *mut std::ffi::c_void;
 
-        let project_args = FlutterProjectArgs::new::<T>(assets_dir, icu_data_path, user_data_ptr);
+        let project_args = FlutterProjectArgs::new(assets_dir, icu_data_path, user_data_ptr);
 
         let mut engine_ptr: sys::FlutterEngine = std::ptr::null_mut();
 
@@ -60,7 +58,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
             sys::FlutterEngineInitialize(
                 1,
                 &renderer_config,
-                &project_args.to_unsafe_args::<T>() as *const sys::FlutterProjectArgs,
+                &project_args.to_unsafe_args() as *const sys::FlutterProjectArgs,
                 user_data_ptr,
                 &mut engine_ptr,
             )
@@ -222,7 +220,7 @@ impl<T: EmbedderCallbacks> FlutterEngine<T> {
     }
 }
 
-extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
+extern "C" fn software_surface_present_callback(
     user_data: *mut std::os::raw::c_void,
     allocation: *const std::os::raw::c_void,
     row_bytes: usize,
@@ -231,7 +229,7 @@ extern "C" fn software_surface_present_callback<T: EmbedderCallbacks>(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].

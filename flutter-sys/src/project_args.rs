@@ -1,16 +1,19 @@
 use crate::{
-    embedder_callbacks::EmbedderCallbacks,
     ffi::to_string,
     semantics::update_semantics_callback,
     sys,
-    task_runner::{EngineTask, PlatformTask, UserData},
+    tasks::{EngineTask, PlatformTask},
+    user_data::UserData,
 };
 use std::ffi::CString;
 
 pub struct FlutterProjectArgs {
     assets_path: *mut i8,
     icu_data_path: *mut i8,
-    _platform_task_runner: Box<sys::FlutterTaskRunnerDescription>,
+    // Rust doesn't know that this needs to be in scope after being passed to
+    // C.
+    #[allow(unused)]
+    platform_task_runner: Box<sys::FlutterTaskRunnerDescription>,
     custom_task_runners: Box<sys::FlutterCustomTaskRunners>,
 }
 
@@ -23,20 +26,18 @@ impl Drop for FlutterProjectArgs {
     }
 }
 
-extern "C" fn runs_task_on_current_thread_callback<T: EmbedderCallbacks>(
-    user_data: *mut ::std::os::raw::c_void,
-) -> bool {
-    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
+extern "C" fn runs_task_on_current_thread_callback(user_data: *mut ::std::os::raw::c_void) -> bool {
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
 
     std::thread::current().id() == user_data.platform_thread_id
 }
 
-extern "C" fn post_task_callback<T: EmbedderCallbacks>(
+extern "C" fn post_task_callback(
     task: sys::FlutterTask,
     target_time_nanos: u64,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
 
     let task = EngineTask::new(target_time_nanos, task);
 
@@ -47,19 +48,15 @@ extern "C" fn post_task_callback<T: EmbedderCallbacks>(
 }
 
 impl FlutterProjectArgs {
-    pub fn new<T: EmbedderCallbacks>(
-        assets_path: &str,
-        icu_data_path: &str,
-        user_data: *mut std::ffi::c_void,
-    ) -> Self {
+    pub fn new(assets_path: &str, icu_data_path: &str, user_data: *mut std::ffi::c_void) -> Self {
         let assets_path = CString::new(assets_path).unwrap().into_raw();
         let icu_data_path = CString::new(icu_data_path).unwrap().into_raw();
 
         let platform_task_runner = Box::new(sys::FlutterTaskRunnerDescription {
             struct_size: std::mem::size_of::<sys::FlutterTaskRunnerDescription>(),
             user_data: user_data as *mut std::ffi::c_void,
-            runs_task_on_current_thread_callback: Some(runs_task_on_current_thread_callback::<T>),
-            post_task_callback: Some(post_task_callback::<T>),
+            runs_task_on_current_thread_callback: Some(runs_task_on_current_thread_callback),
+            post_task_callback: Some(post_task_callback),
             identifier: 0,
         });
 
@@ -73,12 +70,12 @@ impl FlutterProjectArgs {
         Self {
             assets_path,
             icu_data_path,
-            _platform_task_runner: platform_task_runner,
+            platform_task_runner,
             custom_task_runners,
         }
     }
 
-    pub fn to_unsafe_args<T: EmbedderCallbacks>(&self) -> sys::FlutterProjectArgs {
+    pub fn to_unsafe_args(&self) -> sys::FlutterProjectArgs {
         sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<sys::FlutterProjectArgs>(),
             assets_path: self.assets_path,
@@ -111,22 +108,25 @@ impl FlutterProjectArgs {
             compute_platform_resolved_locale_callback: None,
             dart_entrypoint_argc: 0,
             dart_entrypoint_argv: std::ptr::null(),
-            log_message_callback: Some(log_message_callback::<T>),
+            log_message_callback: Some(log_message_callback),
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
-            update_semantics_callback: Some(update_semantics_callback::<T>),
+            update_semantics_callback: Some(update_semantics_callback),
         }
     }
 }
 
-extern "C" fn log_message_callback<T: EmbedderCallbacks>(
+extern "C" fn log_message_callback(
     tag: *const ::std::os::raw::c_char,
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
     let tag = to_string(tag);
     let message = to_string(message);
 
-    user_data.callbacks.log(tag, message);
+    user_data
+        .platform_task_channel
+        .send(PlatformTask::LogMessage { tag, message })
+        .unwrap();
 }

@@ -1,15 +1,14 @@
-use crate::task_runner::{PlatformTask, SemanticsUpdate};
-use crate::{ffi::to_string, sys, task_runner::UserData, EmbedderCallbacks};
+use crate::{ffi::to_string, sys, tasks::PlatformTask, user_data::UserData};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
 };
 
-pub(crate) extern "C" fn update_semantics_callback<T: EmbedderCallbacks>(
+pub(crate) extern "C" fn update_semantics_callback(
     semantics_update: *const sys::FlutterSemanticsUpdate,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData<T> = unsafe { std::mem::transmute(user_data) };
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
 
     let sys::FlutterSemanticsUpdate {
         nodes_count, nodes, ..
@@ -52,10 +51,18 @@ pub(crate) extern "C" fn update_semantics_callback<T: EmbedderCallbacks>(
             },
         )
         .collect();
+
     user_data
         .platform_task_channel
         .send(PlatformTask::UpdateSemantics(updates))
         .unwrap();
+}
+
+#[derive(Debug)]
+pub struct SemanticsUpdate {
+    pub id: i32,
+    pub children: Vec<i32>,
+    pub node: FlutterSemanticsNode,
 }
 
 pub struct FlutterSemanticsTree {
@@ -78,34 +85,11 @@ impl FlutterSemanticsTree {
         }
     }
 
-    pub fn write_to<T: EmbedderCallbacks>(&self, callbacks: &mut T) -> () {
-        self.draw_text(callbacks, ROOT_ID, sys::FlutterTransformation::empty());
+    pub fn as_graph(&self) -> GraphNode {
+        self.as_graph_recur(ROOT_ID)
     }
 
-    fn draw_text<T: EmbedderCallbacks>(
-        &self,
-        callbacks: &mut T,
-        id: i32,
-        transform: sys::FlutterTransformation,
-    ) {
-        let current = self.id_map.get(&id).unwrap();
-
-        let transform = current.transform.merge_with(&transform);
-
-        if !current.flags.contains(&FlutterSemanticsFlag::IsHidden) && !current.label.is_empty() {
-            callbacks.draw_text(
-                (transform.transX * transform.scaleX).round() as usize,
-                (transform.transY * transform.scaleY / 2.0).round() as usize,
-                &current.label,
-            );
-        }
-
-        for child_id in self.adjacency_list.get(&id).unwrap() {
-            self.draw_text(callbacks, *child_id, transform);
-        }
-    }
-
-    fn debug_graph(&self, id: i32) -> GraphNode {
+    fn as_graph_recur(&self, id: i32) -> GraphNode {
         let current = Clone::clone(self.id_map.get(&id).unwrap());
 
         let children = self
@@ -113,44 +97,40 @@ impl FlutterSemanticsTree {
             .get(&id)
             .unwrap()
             .into_iter()
-            .map(|child_id| self.debug_graph(*child_id))
+            .map(|child_id| self.as_graph_recur(*child_id))
             .collect();
 
-        GraphNode {
-            id,
-            current,
-            children,
-        }
+        GraphNode { current, children }
     }
 }
 
 impl Debug for FlutterSemanticsTree {
     /// Formats the nodes in a tree like structure.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.debug_graph(ROOT_ID))
+        write!(f, "{:#?}", self.as_graph())
     }
 }
 
 #[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct FlutterSemanticsNode {
-    label: String,
-    flags: HashSet<FlutterSemanticsFlag>,
-    value: String,
-    rect: sys::FlutterRect,
-    transform: sys::FlutterTransformation,
+    pub label: String,
+    pub flags: HashSet<FlutterSemanticsFlag>,
+    pub value: String,
+    pub rect: sys::FlutterRect,
+    pub transform: sys::FlutterTransformation,
 }
 
-#[allow(unused)]
 #[derive(Debug)]
-struct GraphNode {
-    id: i32,
-    current: FlutterSemanticsNode,
-    children: Vec<GraphNode>,
+pub struct GraphNode {
+    pub current: FlutterSemanticsNode,
+    pub children: Vec<GraphNode>,
 }
+
+pub use sys::FlutterTransformation;
 
 impl sys::FlutterTransformation {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             scaleX: 1.0,
             scaleY: 1.0,
@@ -164,7 +144,7 @@ impl sys::FlutterTransformation {
             pers2: 1.0,
         }
     }
-    fn merge_with(&self, other: &Self) -> Self {
+    pub fn merge_with(&self, other: &Self) -> Self {
         Self {
             scaleX: self.scaleX * other.scaleX,
             scaleY: self.scaleY * other.scaleY,
@@ -180,7 +160,7 @@ impl sys::FlutterTransformation {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-enum FlutterSemanticsFlag {
+pub enum FlutterSemanticsFlag {
     HasCheckedState,
     IsChecked,
     IsSelected,

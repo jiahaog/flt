@@ -14,13 +14,6 @@ use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 
 pub struct TerminalWindow {
-    // This mutex is because the struct can be accessed on multiple threads
-    // without the guardrails of rust, as it is transmuted in the C callbacks.
-    //
-    // Without the mutex, printing to stdout from multiple sources will cause
-    // races the appear in the output.
-    // TODO(jiahaog): Consider using a event driven structure on the main thread
-    // instead.
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
     simple_output: bool,
@@ -82,7 +75,7 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), Error> {
+    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), ErrorKind> {
         self.stdout.queue(MoveTo(x as u16, y as u16))?;
         self.stdout.queue(Print(text))?;
         self.stdout.flush()?;
@@ -90,7 +83,12 @@ impl TerminalWindow {
         Ok(())
     }
 
-    pub fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) -> Result<(), Error> {
+    pub fn draw(
+        &mut self,
+        width: usize,
+        height: usize,
+        buffer: Vec<Pixel>,
+    ) -> Result<(), ErrorKind> {
         if self.simple_output {
             return Ok(());
         }
@@ -192,14 +190,3 @@ fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {
 }
 
 const BLOCK_UPPER: char = '▀';
-
-impl From<ErrorKind> for Error {
-    fn from(value: ErrorKind) -> Self {
-        Error::ErrorStr(value.to_string())
-    }
-}
-
-#[derive(Debug)]
-pub enum Error {
-    ErrorStr(String),
-}

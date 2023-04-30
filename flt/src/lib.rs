@@ -1,50 +1,44 @@
 use constants::{FPS, PIXEL_RATIO};
-use flutter_sys::task_runner::TaskRunner;
 use flutter_sys::{
-    task_runner::PlatformTask, EmbedderCallbacks, FlutterEngine, FlutterSemanticsTree, Pixel,
+    FlutterEngine, FlutterSemanticsTree, FlutterTransformation, GraphNode, PlatformTask,
 };
 use std::io::Write;
 use std::{
     fs::File,
     sync::mpsc::{channel, Receiver},
 };
+use task_runner::TaskRunner;
 use terminal_event_task::TerminalEventTask;
 use terminal_window::TerminalWindow;
 
 mod constants;
+mod task_runner;
 mod terminal_event_task;
 mod terminal_window;
 
 pub struct TerminalEmbedder {
-    engine: FlutterEngine<TerminalEmbedderCallbacks>,
+    engine: FlutterEngine,
     platform_task_channel: Receiver<PlatformTask>,
     semantics_tree: FlutterSemanticsTree,
-    callbacks: TerminalEmbedderCallbacks,
-    platform_task_runner: TaskRunner<TerminalEmbedderCallbacks>,
+    terminal_window: TerminalWindow,
+    platform_task_runner: TaskRunner,
 }
 
 impl TerminalEmbedder {
     pub fn new(assets_dir: &str, icu_data_path: &str, simple_output: bool) -> Result<Self, Error> {
-        let callbacks = TerminalEmbedderCallbacks {
-            terminal_window: TerminalWindow::new(simple_output),
-        };
-
-        let (width, height) = callbacks.terminal_window.size();
-
         let (sender, receiver) = channel();
 
         let embedder = Self {
-            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks, sender)?,
+            engine: FlutterEngine::new(assets_dir, icu_data_path, sender)?,
             platform_task_channel: receiver,
             semantics_tree: FlutterSemanticsTree::new(),
-            callbacks: TerminalEmbedderCallbacks {
-                terminal_window: TerminalWindow::new(simple_output),
-            },
+            terminal_window: TerminalWindow::new(simple_output),
             platform_task_runner: TaskRunner::new(),
         };
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
 
+        let (width, height) = embedder.terminal_window.size();
         embedder
             .engine
             .send_window_metrics_event(width, height, PIXEL_RATIO)?;
@@ -59,7 +53,14 @@ impl TerminalEmbedder {
                     PlatformTask::UpdateSemantics(updates) => {
                         self.semantics_tree.update(updates);
 
-                        self.semantics_tree.write_to(&mut self.callbacks);
+                        let root = self.semantics_tree.as_graph();
+
+                        draw_semantic_labels(
+                            &mut self.terminal_window,
+                            FlutterTransformation::empty(),
+                            root,
+                        )?;
+
                         let mut f = File::create("/tmp/semantics.txt").unwrap();
 
                         writeln!(f, "{:#?}", self.semantics_tree).unwrap();
@@ -68,9 +69,15 @@ impl TerminalEmbedder {
                         width,
                         height,
                         buffer,
-                    } => self.callbacks.draw(width, height, buffer),
+                    } => {
+                        self.terminal_window.draw(width, height, buffer)?;
+                    }
                     PlatformTask::EngineTask(engine_task) => {
                         self.platform_task_runner.post_task(engine_task);
+                    }
+                    PlatformTask::LogMessage { tag, message } => {
+                        // TODO(jiahaog): Print to the main terminal.
+                        println!("{tag}: {message}");
                     }
                 }
             }
@@ -80,32 +87,48 @@ impl TerminalEmbedder {
     }
 }
 
-struct TerminalEmbedderCallbacks {
-    terminal_window: TerminalWindow,
-}
-
-impl EmbedderCallbacks for TerminalEmbedderCallbacks {
-    fn log(&self, tag: String, message: String) {
-        // TODO: Print to the main terminal.
-        println!("{tag}: {message}");
-    }
-
-    fn draw(&mut self, width: usize, height: usize, buffer: Vec<Pixel>) {
-        self.terminal_window.draw(width, height, buffer).unwrap()
-    }
-
-    fn draw_text(&mut self, x: usize, y: usize, text: &str) {
-        self.terminal_window.draw_text(x, y, text).unwrap()
-    }
-}
-
 #[derive(Debug)]
 pub enum Error {
     EngineError(flutter_sys::Error),
+    TerminalError(crossterm::ErrorKind),
 }
 
 impl From<flutter_sys::Error> for Error {
     fn from(value: flutter_sys::Error) -> Self {
         Error::EngineError(value)
     }
+}
+
+impl From<crossterm::ErrorKind> for Error {
+    fn from(value: crossterm::ErrorKind) -> Self {
+        Error::TerminalError(value)
+    }
+}
+
+fn draw_semantic_labels(
+    terminal_window: &mut TerminalWindow,
+    parent_merged_transform: FlutterTransformation,
+    node: GraphNode,
+) -> Result<(), crossterm::ErrorKind> {
+    let current = node.current;
+
+    let transform = current.transform.merge_with(&parent_merged_transform);
+
+    if !current
+        .flags
+        .contains(&flutter_sys::FlutterSemanticsFlag::IsHidden)
+        && !current.label.is_empty()
+    {
+        terminal_window.draw_text(
+            (transform.transX * transform.scaleX).round() as usize,
+            (transform.transY * transform.scaleY / 2.0).round() as usize,
+            &current.label,
+        )?;
+    }
+
+    for child in node.children {
+        draw_semantic_labels(terminal_window, transform, child)?;
+    }
+
+    Ok(())
 }
