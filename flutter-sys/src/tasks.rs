@@ -1,19 +1,13 @@
 use crate::{sys, Error, FlutterEngine, Pixel, SemanticsUpdate};
 
-pub trait Task {
-    fn run(&self, engine: &FlutterEngine) -> Result<(), Error>;
-
-    fn can_run_now(&self) -> bool;
-}
-
 #[derive(Debug)]
 pub struct EngineTask {
     target_time_nanos: u64,
     flutter_task: sys::FlutterTask,
 }
 
-impl Task for EngineTask {
-    fn run(&self, engine: &FlutterEngine) -> Result<(), Error> {
+impl EngineTask {
+    pub fn run(&self, engine: &FlutterEngine) -> Result<(), Error> {
         let result = unsafe { sys::FlutterEngineRunTask(engine.get_engine(), &self.flutter_task) };
         if result != sys::FlutterEngineResult_kSuccess {
             Err(result.into())
@@ -22,7 +16,7 @@ impl Task for EngineTask {
         }
     }
 
-    fn can_run_now(&self) -> bool {
+    pub fn can_run_now(&self) -> bool {
         let current_time_nanos = unsafe { sys::FlutterEngineGetCurrentTime() };
         self.target_time_nanos < current_time_nanos
     }

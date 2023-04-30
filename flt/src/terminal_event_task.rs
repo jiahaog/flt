@@ -1,16 +1,15 @@
+use crate::constants::{PIXEL_RATIO, SCROLL_DELTA};
 use crossterm::event::{poll, read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
     FlutterEngine, FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind,
-    KeyEventType, Task,
+    KeyEventType,
 };
 use std::time::Duration;
 
-use crate::constants::{PIXEL_RATIO, SCROLL_DELTA};
-
 pub(crate) struct TerminalEventTask {}
 
-impl Task for TerminalEventTask {
-    fn run(&self, engine: &FlutterEngine) -> Result<(), flutter_sys::Error> {
+impl TerminalEventTask {
+    pub fn run(&self, engine: &FlutterEngine) -> Result<(), flutter_sys::Error> {
         if !poll(Duration::from_millis(1)).unwrap() {
             return Ok(());
         }
@@ -113,10 +112,6 @@ impl Task for TerminalEventTask {
                 Ok(())
             }
         }
-    }
-
-    fn can_run_now(&self) -> bool {
-        true
     }
 }
 

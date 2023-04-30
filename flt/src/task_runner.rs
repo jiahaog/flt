@@ -1,7 +1,7 @@
-use flutter_sys::{Error, FlutterEngine, Task};
+use flutter_sys::{EngineTask, Error, FlutterEngine};
 
 pub struct TaskRunner {
-    tasks: Vec<Box<dyn Task>>,
+    tasks: Vec<EngineTask>,
 }
 
 impl TaskRunner {
@@ -9,8 +9,8 @@ impl TaskRunner {
         Self { tasks: vec![] }
     }
 
-    pub fn post_task(&mut self, task: impl Task + 'static) {
-        self.tasks.push(Box::new(task));
+    pub fn post_task(&mut self, task: EngineTask) {
+        self.tasks.push(task);
     }
 
     pub fn run_expired_tasks(&mut self, engine: &FlutterEngine) -> Result<(), Error> {

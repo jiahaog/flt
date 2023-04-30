@@ -81,7 +81,7 @@ impl TerminalEmbedder {
                     }
                 }
             }
-            self.platform_task_runner.post_task(TerminalEventTask {});
+            TerminalEventTask {}.run(&self.engine)?;
             self.platform_task_runner.run_expired_tasks(&self.engine)?;
         }
     }
