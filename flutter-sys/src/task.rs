@@ -1,4 +1,4 @@
-use crate::{sys, Error, FlutterEngine, Pixel, SemanticsUpdate};
+use crate::{sys, user_data::UserData, EngineEvent, Error, FlutterEngine};
 
 #[derive(Debug)]
 pub struct EngineTask {
@@ -31,17 +31,25 @@ impl EngineTask {
     }
 }
 
-#[derive(Debug)]
-pub enum PlatformTask {
-    UpdateSemantics(Vec<SemanticsUpdate>),
-    Draw {
-        width: usize,
-        height: usize,
-        buffer: Vec<Pixel>,
-    },
-    EngineTask(EngineTask),
-    LogMessage {
-        tag: String,
-        message: String,
-    },
+pub(crate) extern "C" fn runs_task_on_current_thread_callback(
+    user_data: *mut ::std::os::raw::c_void,
+) -> bool {
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+
+    std::thread::current().id() == user_data.platform_thread_id
+}
+
+pub(crate) extern "C" fn post_task_callback(
+    task: sys::FlutterTask,
+    target_time_nanos: u64,
+    user_data: *mut ::std::os::raw::c_void,
+) {
+    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+
+    let task = EngineTask::new(target_time_nanos, task);
+
+    user_data
+        .platform_task_channel
+        .send(EngineEvent::EngineTask(task))
+        .unwrap();
 }

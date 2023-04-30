@@ -1,15 +1,15 @@
+use crate::event::EngineEvent;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
-use crate::tasks::PlatformTask;
 use crate::user_data::UserData;
-use crate::{sys, KeyEventType};
+use crate::{sys, Error, KeyEventType};
 use std::slice;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 pub struct FlutterEngine {
-    pub engine: sys::FlutterEngine,
+    engine: sys::FlutterEngine,
     // `UserData` needs to be on the heap so that the Flutter Engine
     // callbacks can safely provide a pointer to it (if it was on the
     // stack, there is a chance that the value is dropped when the
@@ -34,7 +34,7 @@ impl FlutterEngine {
     pub fn new(
         assets_dir: &str,
         icu_data_path: &str,
-        platform_task_channel: Sender<PlatformTask>,
+        platform_task_channel: Sender<EngineEvent>,
     ) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
@@ -260,7 +260,7 @@ extern "C" fn software_surface_present_callback(
 
     user_data
         .platform_task_channel
-        .send(PlatformTask::Draw {
+        .send(EngineEvent::Draw {
             width,
             height,
             buffer,
@@ -268,22 +268,4 @@ extern "C" fn software_surface_present_callback(
         .unwrap();
 
     return true;
-}
-
-#[derive(Debug)]
-pub enum Error {
-    InvalidLibraryVersion,
-    InvalidArguments,
-    InternalConsistency,
-}
-
-impl From<sys::FlutterEngineResult> for Error {
-    fn from(value: sys::FlutterEngineResult) -> Self {
-        match value {
-            sys::FlutterEngineResult_kInvalidLibraryVersion => Error::InvalidLibraryVersion,
-            sys::FlutterEngineResult_kInvalidArguments => Error::InvalidArguments,
-            sys::FlutterEngineResult_kInternalInconsistency => Error::InternalConsistency,
-            value => panic!("Unexpected value for FlutterEngineResult: {} ", value),
-        }
-    }
 }

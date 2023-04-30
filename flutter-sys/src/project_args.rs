@@ -1,13 +1,10 @@
 use crate::{
-    ffi::to_string,
-    semantics::update_semantics_callback,
-    sys,
-    tasks::{EngineTask, PlatformTask},
-    user_data::UserData,
+    ffi::to_string, post_task_callback, runs_task_on_current_thread_callback,
+    semantics::update_semantics_callback, sys, user_data::UserData, EngineEvent,
 };
 use std::ffi::CString;
 
-pub struct FlutterProjectArgs {
+pub(crate) struct FlutterProjectArgs {
     assets_path: *mut i8,
     icu_data_path: *mut i8,
     // Rust doesn't know that this needs to be in scope after being passed to
@@ -24,27 +21,6 @@ impl Drop for FlutterProjectArgs {
             let _ = CString::from_raw(self.icu_data_path);
         }
     }
-}
-
-extern "C" fn runs_task_on_current_thread_callback(user_data: *mut ::std::os::raw::c_void) -> bool {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
-
-    std::thread::current().id() == user_data.platform_thread_id
-}
-
-extern "C" fn post_task_callback(
-    task: sys::FlutterTask,
-    target_time_nanos: u64,
-    user_data: *mut ::std::os::raw::c_void,
-) {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
-
-    let task = EngineTask::new(target_time_nanos, task);
-
-    user_data
-        .platform_task_channel
-        .send(PlatformTask::EngineTask(task))
-        .unwrap();
 }
 
 impl FlutterProjectArgs {
@@ -127,6 +103,6 @@ extern "C" fn log_message_callback(
 
     user_data
         .platform_task_channel
-        .send(PlatformTask::LogMessage { tag, message })
+        .send(EngineEvent::LogMessage { tag, message })
         .unwrap();
 }
