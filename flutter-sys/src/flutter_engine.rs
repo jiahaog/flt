@@ -9,10 +9,15 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 pub struct FlutterEngine {
+    pub engine: sys::FlutterEngine,
     // `UserData` needs to be on the heap so that the Flutter Engine
     // callbacks can safely provide a pointer to it (if it was on the
     // stack, there is a chance that the value is dropped when the
     // callbacks still reference it).
+    //
+    // The unused exemption is because Rust doesn't know that it is used in the
+    // C callbacks.
+    #[allow(unused)]
     user_data: Box<UserData>,
     // TODO(jiahaog): Remove this and introduce a clock instead.
     engine_start_time: Duration,
@@ -42,7 +47,6 @@ impl FlutterEngine {
         };
 
         let mut user_data = Box::new(UserData::new(
-            std::ptr::null_mut(),
             std::thread::current().id(),
             platform_task_channel,
         ));
@@ -52,33 +56,27 @@ impl FlutterEngine {
 
         let project_args = FlutterProjectArgs::new(assets_dir, icu_data_path, user_data_ptr);
 
-        let mut engine_ptr: sys::FlutterEngine = std::ptr::null_mut();
+        let mut engine = Self {
+            engine: std::ptr::null_mut(),
+            user_data,
+            engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
+            start_instant: Instant::now(),
+        };
 
         let result = unsafe {
-            sys::FlutterEngineInitialize(
+            sys::FlutterEngineRun(
                 1,
                 &renderer_config,
                 &project_args.to_unsafe_args() as *const sys::FlutterProjectArgs,
                 user_data_ptr,
-                &mut engine_ptr,
+                &mut engine.engine,
             )
         };
         if result != sys::FlutterEngineResult_kSuccess {
             return Err(result.into());
         };
 
-        user_data.engine = engine_ptr;
-
-        let result = unsafe { sys::FlutterEngineRunInitialized(user_data.engine) };
-        if result != sys::FlutterEngineResult_kSuccess {
-            return Err(result.into());
-        };
-
-        Ok(Self {
-            user_data,
-            engine_start_time: Duration::from_nanos(unsafe { sys::FlutterEngineGetCurrentTime() }),
-            start_instant: Instant::now(),
-        })
+        Ok(engine)
     }
 
     /// Returns a duration from when the Flutter Engine was started.
@@ -88,7 +86,7 @@ impl FlutterEngine {
     }
 
     pub(crate) fn get_engine(&self) -> sys::FlutterEngine {
-        self.user_data.engine
+        self.engine
     }
 
     pub fn update_semantics(&self, enabled: bool) -> Result<(), Error> {
