@@ -1,6 +1,5 @@
-//! Implementation of [crate::window::Window], rendering to the terminal output.
-//!
-//! This should be the only file in this crate which depends on [crossterm].
+//! This should be the only file in this crate which depends on [crossterm]
+//! functionality beyond the data classes.
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
