@@ -26,7 +26,7 @@ struct TerminalCell {
 }
 
 impl TerminalWindow {
-    pub fn new(simple_output: bool) -> Self {
+    pub(crate) fn new(simple_output: bool) -> Self {
         let mut stdout = stdout();
 
         if !simple_output {
@@ -45,7 +45,7 @@ impl TerminalWindow {
         }
     }
 
-    pub fn size(&self) -> (usize, usize) {
+    pub(crate) fn size(&self) -> (usize, usize) {
         let (width, height) = size().unwrap();
         (
             width as usize,
@@ -75,7 +75,7 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), ErrorKind> {
+    pub(crate) fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), ErrorKind> {
         self.stdout.queue(MoveTo(x as u16, y as u16))?;
         self.stdout.queue(Print(text))?;
         self.stdout.flush()?;
@@ -83,7 +83,7 @@ impl TerminalWindow {
         Ok(())
     }
 
-    pub fn draw(
+    pub(crate) fn draw(
         &mut self,
         width: usize,
         height: usize,
