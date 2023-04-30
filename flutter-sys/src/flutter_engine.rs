@@ -275,9 +275,6 @@ pub enum Error {
     InvalidLibraryVersion,
     InvalidArguments,
     InternalConsistency,
-
-    // TODO(jiahaog): This shouldn't be here.
-    UserTerminated,
 }
 
 impl From<sys::FlutterEngineResult> for Error {

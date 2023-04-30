@@ -7,13 +7,13 @@ use std::{
     sync::mpsc::{channel, Receiver},
 };
 use task_runner::TaskRunner;
-use terminal_event_task::TerminalEventTask;
+use terminal_event::handle_terminal_event;
 use terminal_window::TerminalWindow;
 
 mod constants;
 mod semantics;
 mod task_runner;
-mod terminal_event_task;
+mod terminal_event;
 mod terminal_window;
 
 pub struct TerminalEmbedder {
@@ -47,7 +47,9 @@ impl TerminalEmbedder {
     }
 
     pub fn run_event_loop(&mut self) -> Result<(), Error> {
-        loop {
+        let mut should_run = true;
+
+        while should_run {
             if let Ok(platform_task) = self.platform_task_channel.try_recv() {
                 match platform_task {
                     PlatformTask::UpdateSemantics(updates) => {
@@ -81,9 +83,11 @@ impl TerminalEmbedder {
                     }
                 }
             }
-            TerminalEventTask {}.run(&self.engine)?;
+            should_run = handle_terminal_event(&self.engine)?;
             self.platform_task_runner.run_expired_tasks(&self.engine)?;
         }
+
+        Ok(())
     }
 }
 
