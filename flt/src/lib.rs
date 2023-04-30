@@ -1,7 +1,6 @@
 use constants::{FPS, PIXEL_RATIO};
-use flutter_sys::{
-    FlutterEngine, FlutterSemanticsTree, FlutterTransformation, GraphNode, PlatformTask,
-};
+use flutter_sys::{FlutterEngine, FlutterTransformation, PlatformTask};
+use semantics::{draw_semantic_labels, FlutterSemanticsTree};
 use std::io::Write;
 use std::{
     fs::File,
@@ -12,6 +11,7 @@ use terminal_event_task::TerminalEventTask;
 use terminal_window::TerminalWindow;
 
 mod constants;
+mod semantics;
 mod task_runner;
 mod terminal_event_task;
 mod terminal_window;
@@ -63,7 +63,7 @@ impl TerminalEmbedder {
 
                         let mut f = File::create("/tmp/semantics.txt").unwrap();
 
-                        writeln!(f, "{:#?}", self.semantics_tree).unwrap();
+                        writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
                     }
                     PlatformTask::Draw {
                         width,
@@ -103,32 +103,4 @@ impl From<crossterm::ErrorKind> for Error {
     fn from(value: crossterm::ErrorKind) -> Self {
         Error::TerminalError(value)
     }
-}
-
-fn draw_semantic_labels(
-    terminal_window: &mut TerminalWindow,
-    parent_merged_transform: FlutterTransformation,
-    node: GraphNode,
-) -> Result<(), crossterm::ErrorKind> {
-    let current = node.current;
-
-    let transform = current.transform.merge_with(&parent_merged_transform);
-
-    if !current
-        .flags
-        .contains(&flutter_sys::FlutterSemanticsFlag::IsHidden)
-        && !current.label.is_empty()
-    {
-        terminal_window.draw_text(
-            (transform.transX * transform.scaleX).round() as usize,
-            (transform.transY * transform.scaleY / 2.0).round() as usize,
-            &current.label,
-        )?;
-    }
-
-    for child in node.children {
-        draw_semantic_labels(terminal_window, transform, child)?;
-    }
-
-    Ok(())
 }

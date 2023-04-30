@@ -1,8 +1,5 @@
 use crate::{ffi::to_string, sys, tasks::PlatformTask, user_data::UserData};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-};
+use std::{collections::HashSet, fmt::Debug};
 
 pub(crate) extern "C" fn update_semantics_callback(
     semantics_update: *const sys::FlutterSemanticsUpdate,
@@ -65,52 +62,6 @@ pub struct SemanticsUpdate {
     pub node: FlutterSemanticsNode,
 }
 
-pub struct FlutterSemanticsTree {
-    id_map: HashMap<i32, FlutterSemanticsNode>,
-    adjacency_list: HashMap<i32, Vec<i32>>,
-}
-
-impl FlutterSemanticsTree {
-    pub fn new() -> Self {
-        Self {
-            id_map: HashMap::new(),
-            adjacency_list: HashMap::new(),
-        }
-    }
-    pub fn update(&mut self, updates: Vec<SemanticsUpdate>) {
-        for SemanticsUpdate { id, children, node } in updates {
-            self.id_map.insert(id, node);
-
-            self.adjacency_list.insert(id, children);
-        }
-    }
-
-    pub fn as_graph(&self) -> GraphNode {
-        self.as_graph_recur(ROOT_ID)
-    }
-
-    fn as_graph_recur(&self, id: i32) -> GraphNode {
-        let current = Clone::clone(self.id_map.get(&id).unwrap());
-
-        let children = self
-            .adjacency_list
-            .get(&id)
-            .unwrap()
-            .into_iter()
-            .map(|child_id| self.as_graph_recur(*child_id))
-            .collect();
-
-        GraphNode { current, children }
-    }
-}
-
-impl Debug for FlutterSemanticsTree {
-    /// Formats the nodes in a tree like structure.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.as_graph())
-    }
-}
-
 #[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct FlutterSemanticsNode {
@@ -119,12 +70,6 @@ pub struct FlutterSemanticsNode {
     pub value: String,
     pub rect: sys::FlutterRect,
     pub transform: sys::FlutterTransformation,
-}
-
-#[derive(Debug)]
-pub struct GraphNode {
-    pub current: FlutterSemanticsNode,
-    pub children: Vec<GraphNode>,
 }
 
 pub use sys::FlutterTransformation;
@@ -273,5 +218,3 @@ fn to_flags(bit_flag: sys::FlutterSemanticsFlag) -> HashSet<FlutterSemanticsFlag
     }
     result
 }
-
-const ROOT_ID: i32 = 0;
