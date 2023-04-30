@@ -97,7 +97,8 @@ pub(crate) fn handle_terminal_event(
             engine.send_window_metrics_event(
                 columns as usize,
                 rows as usize,
-                // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so compressed?
+                // TODO(jiahaog): Choose a pixel ratio based on the size so everything is not so
+                // compressed?
                 PIXEL_RATIO,
             )?;
             Ok(true)

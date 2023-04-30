@@ -81,7 +81,8 @@ impl FlutterEngine {
 
     /// Returns a duration from when the Flutter Engine was started.
     fn duration_from_start(&self) -> Duration {
-        // Always offset instants from `engine_start_time` to match the engine time base.
+        // Always offset instants from `engine_start_time` to match the engine time
+        // base.
         Instant::now().duration_since(self.start_instant) + self.engine_start_time
     }
 
@@ -208,8 +209,8 @@ impl FlutterEngine {
         // };
 
         // let result = unsafe {
-        //     sys::FlutterEngineSendKeyEvent(self.engine, &flutter_key_event, None, null_mut())
-        // };
+        //     sys::FlutterEngineSendKeyEvent(self.engine, &flutter_key_event, None,
+        // null_mut()) };
         // match result {
         //     sys::FlutterEngineResult_kSuccess => Ok(()),
         //     err => Err(err.into()),
