@@ -1,7 +1,7 @@
+mod engine;
 mod error;
 mod event;
 mod ffi;
-mod flutter_engine;
 mod key;
 mod pixel;
 mod pointer;
@@ -11,9 +11,9 @@ mod sys;
 mod task;
 mod user_data;
 
+pub use engine::*;
 pub use error::*;
 pub use event::*;
-pub use flutter_engine::*;
 pub use key::*;
 pub use pixel::*;
 pub use pointer::*;
