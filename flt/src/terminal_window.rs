@@ -3,7 +3,7 @@
 //! This should be the only file in this crate which depends on [crossterm].
 
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
@@ -12,17 +12,14 @@ use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
+use std::sync::mpsc::{channel, Receiver};
+use std::thread::{self};
 
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
     simple_output: bool,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-struct TerminalCell {
-    top: Color,
-    bottom: Color,
+    event_channel: Receiver<Event>,
 }
 
 impl TerminalWindow {
@@ -38,11 +35,26 @@ impl TerminalWindow {
             stdout.execute(EnableMouseCapture).unwrap();
         }
 
+        let (sender, receiver) = channel();
+
+        thread::spawn(move || {
+            let mut should_run = true;
+            while should_run {
+                let event = read().unwrap();
+                should_run = sender.send(event).is_ok();
+            }
+        });
+
         Self {
             stdout,
             lines: vec![],
             simple_output,
+            event_channel: receiver,
         }
+    }
+
+    pub(crate) fn event_channel(&self) -> &Receiver<Event> {
+        &self.event_channel
     }
 
     pub(crate) fn size(&self) -> (usize, usize) {
@@ -182,6 +194,12 @@ impl TerminalWindow {
 
         Ok(())
     }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct TerminalCell {
+    top: Color,
+    bottom: Color,
 }
 
 fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {

@@ -77,7 +77,11 @@ impl TerminalEmbedder {
                     }
                 }
             }
-            should_run = handle_terminal_event(&self.engine)?;
+
+            if let Ok(terminal_event) = self.terminal_window.event_channel().try_recv() {
+                should_run = handle_terminal_event(&self.engine, terminal_event)?;
+            }
+
             self.platform_task_runner.run_expired_tasks(&self.engine)?;
         }
 

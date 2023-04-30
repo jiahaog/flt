@@ -1,19 +1,16 @@
 use crate::constants::{PIXEL_RATIO, SCROLL_DELTA};
-use crossterm::event::{poll, read, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use flutter_sys::{
     FlutterEngine, FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind,
     KeyEventType,
 };
-use std::time::Duration;
 
 /// Returns whether the process should terminate.
-pub(crate) fn handle_terminal_event(engine: &FlutterEngine) -> Result<bool, flutter_sys::Error> {
-    if !poll(Duration::from_millis(1)).unwrap() {
-        return Ok(true);
-    }
-
-    // Read guaranteed to not block because of [poll] above.
-    match read().unwrap() {
+pub(crate) fn handle_terminal_event(
+    engine: &FlutterEngine,
+    event: Event,
+) -> Result<bool, flutter_sys::Error> {
+    match event {
         crossterm::event::Event::FocusGained => todo!(),
         crossterm::event::Event::FocusLost => todo!(),
         crossterm::event::Event::Key(KeyEvent {
