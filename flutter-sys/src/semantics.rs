@@ -55,7 +55,6 @@ pub(crate) extern "C" fn update_semantics_callback(
         .unwrap();
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct FlutterSemanticsNode {
     pub label: String,
@@ -127,6 +126,7 @@ pub enum FlutterSemanticsFlag {
     IsCheckStateMixed,
 }
 
+// TODO(jiahaog): Not sure if there's a better way to deal with bitflags.
 fn to_flags(bit_flag: sys::FlutterSemanticsFlag) -> HashSet<FlutterSemanticsFlag> {
     use FlutterSemanticsFlag::*;
 

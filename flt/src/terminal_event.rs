@@ -7,7 +7,7 @@ use flutter_sys::{
 use std::time::Duration;
 
 /// Returns whether the process should terminate.
-pub fn handle_terminal_event(engine: &FlutterEngine) -> Result<bool, flutter_sys::Error> {
+pub(crate) fn handle_terminal_event(engine: &FlutterEngine) -> Result<bool, flutter_sys::Error> {
     if !poll(Duration::from_millis(1)).unwrap() {
         return Ok(true);
     }

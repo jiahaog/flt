@@ -5,12 +5,12 @@ use std::fmt::Debug;
 use crate::terminal_window::TerminalWindow;
 
 #[derive(Debug)]
-pub struct GraphNode {
+pub(crate) struct GraphNode {
     pub current: FlutterSemanticsNode,
     pub children: Vec<GraphNode>,
 }
 
-pub struct FlutterSemanticsTree {
+pub(crate) struct FlutterSemanticsTree {
     id_map: HashMap<i32, FlutterSemanticsNode>,
     adjacency_list: HashMap<i32, Vec<i32>>,
 }
@@ -51,7 +51,7 @@ impl FlutterSemanticsTree {
 
 const ROOT_ID: i32 = 0;
 
-pub fn draw_semantic_labels(
+pub(crate) fn draw_semantic_labels(
     terminal_window: &mut TerminalWindow,
     parent_merged_transform: FlutterTransformation,
     node: GraphNode,

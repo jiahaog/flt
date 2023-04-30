@@ -24,7 +24,11 @@ impl Drop for FlutterProjectArgs {
 }
 
 impl FlutterProjectArgs {
-    pub fn new(assets_path: &str, icu_data_path: &str, user_data: *mut std::ffi::c_void) -> Self {
+    pub(crate) fn new(
+        assets_path: &str,
+        icu_data_path: &str,
+        user_data: *mut std::ffi::c_void,
+    ) -> Self {
         let assets_path = CString::new(assets_path).unwrap().into_raw();
         let icu_data_path = CString::new(icu_data_path).unwrap().into_raw();
 
@@ -51,7 +55,7 @@ impl FlutterProjectArgs {
         }
     }
 
-    pub fn to_unsafe_args(&self) -> sys::FlutterProjectArgs {
+    pub(crate) fn to_unsafe_args(&self) -> sys::FlutterProjectArgs {
         sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<sys::FlutterProjectArgs>(),
             assets_path: self.assets_path,
