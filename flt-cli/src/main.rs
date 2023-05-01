@@ -51,6 +51,11 @@ struct Args {
     /// dynamically link `flt`. See ../flutter-sys/build.rs for details.
     #[clap(long)]
     local_engine_out_path: Option<String>,
+
+    /// When enabled, the semantics tree will be dumped to
+    /// `/tmp/flt-semantics.txt` whenever it is updated.
+    #[arg(long)]
+    debug_semantics: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -70,6 +75,7 @@ fn main() {
         monorepo_root.to_path_buf(),
         args.flutter_project_path,
         args.local_engine_out_path,
+        args.debug_semantics,
     );
 
     match (args.debug, args.lldb, args.asan, args.clean) {
@@ -166,6 +172,7 @@ struct Context {
     flutter_project_assets_dir: PathBuf,
     icu_data_path: PathBuf,
     local_engine_out_path: PathBuf,
+    debug_semantics: bool,
 }
 
 impl Context {
@@ -173,6 +180,7 @@ impl Context {
         monorepo_root: PathBuf,
         flutter_project_path: Option<String>,
         local_engine_out_path: Option<String>,
+        debug_semantics: bool,
     ) -> Self {
         let flutter_tools = monorepo_root
             .join("third_party")
@@ -210,6 +218,7 @@ impl Context {
             flutter_project_assets_dir,
             icu_data_path,
             local_engine_out_path,
+            debug_semantics,
         }
     }
 
@@ -226,13 +235,18 @@ impl Context {
     }
 
     fn flt_args(&self) -> Vec<String> {
-        vec![
+        let mut result = vec![
             format!("--icu-data-path={}", self.icu_data_path.to_str().unwrap()),
             format!(
                 "--assets-dir={}",
                 self.flutter_project_assets_dir.to_str().unwrap()
             ),
-        ]
+        ];
+
+        if self.debug_semantics {
+            result.push("--debug-semantics".to_string());
+        }
+        result
     }
 
     fn flutter_engine_path(&self) -> PathBuf {

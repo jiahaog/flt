@@ -17,10 +17,17 @@ pub struct TerminalEmbedder {
     semantics_tree: FlutterSemanticsTree,
     terminal_window: TerminalWindow,
     platform_task_runner: TaskRunner,
+    // TODO(jiahaog): This should be a path instead.
+    debug_semantics: bool,
 }
 
 impl TerminalEmbedder {
-    pub fn new(assets_dir: &str, icu_data_path: &str, simple_output: bool) -> Result<Self, Error> {
+    pub fn new(
+        assets_dir: &str,
+        icu_data_path: &str,
+        simple_output: bool,
+        debug_semantics: bool,
+    ) -> Result<Self, Error> {
         let (sender, receiver) = channel();
         let embedder = Self {
             engine: FlutterEngine::new(assets_dir, icu_data_path, sender)?,
@@ -28,6 +35,7 @@ impl TerminalEmbedder {
             semantics_tree: FlutterSemanticsTree::new(),
             terminal_window: TerminalWindow::new(simple_output),
             platform_task_runner: TaskRunner::new(),
+            debug_semantics,
         };
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
@@ -57,9 +65,10 @@ impl TerminalEmbedder {
                             root,
                         )?;
 
-                        let mut f = File::create("/tmp/semantics.txt").unwrap();
-
-                        writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
+                        if self.debug_semantics {
+                            let mut f = File::create("/tmp/flt-semantics.txt").unwrap();
+                            writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
+                        }
                     }
                     EngineEvent::Draw {
                         width,
