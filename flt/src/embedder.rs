@@ -70,12 +70,8 @@ impl TerminalEmbedder {
                             writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
                         }
                     }
-                    EngineEvent::Draw {
-                        width,
-                        height,
-                        buffer,
-                    } => {
-                        self.terminal_window.draw(width, height, buffer)?;
+                    EngineEvent::Draw(pixel_grid) => {
+                        self.terminal_window.draw(pixel_grid)?;
                     }
                     EngineEvent::EngineTask(engine_task) => {
                         self.platform_task_runner.post_task(engine_task);

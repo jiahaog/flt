@@ -3,16 +3,9 @@ use crate::{EngineTask, FlutterSemanticsNode, Pixel};
 #[derive(Debug)]
 pub enum EngineEvent {
     UpdateSemantics(Vec<SemanticsUpdate>),
-    Draw {
-        width: usize,
-        height: usize,
-        buffer: Vec<Pixel>,
-    },
+    Draw(Vec<Vec<Pixel>>),
     EngineTask(EngineTask),
-    LogMessage {
-        tag: String,
-        message: String,
-    },
+    LogMessage { tag: String, message: String },
 }
 
 #[derive(Debug)]

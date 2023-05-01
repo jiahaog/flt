@@ -259,13 +259,22 @@ extern "C" fn software_surface_present_callback(
     */
     let width = row_bytes / 4;
 
+    let pixel_grid = buffer
+        .into_iter()
+        .enumerate()
+        .fold(vec![], |mut acc, (i, pixel)| {
+            let x = i % width;
+            if x == 0 {
+                acc.push(vec![]);
+            }
+
+            acc.last_mut().unwrap().push(pixel);
+            acc
+        });
+
     user_data
         .platform_task_channel
-        .send(EngineEvent::Draw {
-            width,
-            height,
-            buffer,
-        })
+        .send(EngineEvent::Draw(pixel_grid))
         .unwrap();
 
     return true;

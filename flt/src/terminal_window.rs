@@ -13,7 +13,7 @@ use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::{channel, Receiver};
-use std::thread::{self};
+use std::thread;
 
 pub struct TerminalWindow {
     stdout: Stdout,
@@ -117,72 +117,34 @@ impl TerminalWindow {
         Ok(())
     }
 
-    pub(crate) fn draw(
-        &mut self,
-        width: usize,
-        height: usize,
-        buffer: Vec<Pixel>,
-    ) -> Result<(), ErrorKind> {
+    pub(crate) fn draw(&mut self, mut pixel_grid: Vec<Vec<Pixel>>) -> Result<(), ErrorKind> {
         if self.simple_output {
             return Ok(());
         }
 
-        let mut buffer = buffer.to_vec();
+        let width = pixel_grid.first().map_or(0, |row| row.len());
+
         // Always process an even number of rows.
-        if buffer.len() % 2 != 0 {
-            buffer.extend(vec![Pixel::zero(); width]);
+        if pixel_grid.len() % 2 != 0 {
+            pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
         }
 
         // Each element is one pixel, but when it is rendered to the terminal,
         // two rows share one character, using the unicode BLOCK characters.
+        let lines = (0..pixel_grid.len())
+            .step_by(2)
+            .map(|y| {
+                let tops = &pixel_grid[y];
+                let bottoms = &pixel_grid[y + 1];
 
-        // Group alternate rows together, so zipping them allows two consecutive
-        // rows to be processed into terminal characters at the same time.
-        let tops = buffer
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| {
-                let row = i / width;
-
-                if row % 2 == 0 {
-                    true
-                } else {
-                    false
-                }
+                zip(tops, bottoms)
+                    .map(|(top, bottom)| TerminalCell {
+                        top: to_color(&top),
+                        bottom: to_color(&bottom),
+                    })
+                    .collect::<Vec<TerminalCell>>()
             })
-            .map(|(_, val)| *val);
-        let bottoms = buffer
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| {
-                let row = i / width;
-
-                if row % 2 == 1 {
-                    true
-                } else {
-                    false
-                }
-            })
-            .map(|(_, val)| *val);
-
-        let lines = zip(tops, bottoms)
-            .enumerate()
-            .fold(vec![], |mut acc, (i, (top, bottom))| {
-                if i % width == 0 {
-                    acc.push(vec![]);
-                }
-                let cell = TerminalCell {
-                    top: to_color(&top),
-                    bottom: to_color(&bottom),
-                };
-
-                let current_line = acc.last_mut().unwrap();
-                current_line.push(cell);
-
-                acc
-            });
-
-        assert_eq!(lines.len(), height / 2);
+            .collect::<Vec<Vec<TerminalCell>>>();
 
         // Refreshing the entire terminal (with the clear char) and outputting
         // everything on every iteration is costly and causes the terminal to
@@ -193,7 +155,6 @@ impl TerminalWindow {
 
         // Means that the screen dimensions has changed.
         if self.lines.len() != lines.len() {
-            // TODO(jiahaog): Find a faster way to do this.
             // Use empty values so the diffing check below always fail.
             self.lines = vec![vec![]; lines.len()];
         }
