@@ -3,4 +3,5 @@
 members = [
     "flt",
     "flutter-sys",
+    "flt-cli",
 ]

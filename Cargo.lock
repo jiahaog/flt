@@ -227,6 +227,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "flt-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "flutter-sys"
 version = "0.1.0"
 dependencies = [
