@@ -1,10 +1,10 @@
 use crate::constants::{FPS, PIXEL_RATIO};
-use crate::semantics::{draw_semantic_labels, FlutterSemanticsTree};
+use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
 use crate::terminal_event::handle_terminal_event;
 use crate::terminal_window::TerminalWindow;
 use crate::Error;
-use flutter_sys::{EngineEvent, FlutterEngine, FlutterTransformation};
+use flutter_sys::{EngineEvent, FlutterEngine};
 use std::io::Write;
 use std::{
     fs::File,
@@ -57,13 +57,8 @@ impl TerminalEmbedder {
                     EngineEvent::UpdateSemantics(updates) => {
                         self.semantics_tree.update(updates);
 
-                        let root = self.semantics_tree.as_graph();
-
-                        draw_semantic_labels(
-                            &mut self.terminal_window,
-                            FlutterTransformation::empty(),
-                            root,
-                        )?;
+                        self.terminal_window
+                            .update_semantics(self.semantics_tree.as_label_positions());
 
                         if self.debug_semantics {
                             let mut f = File::create("/tmp/flt-semantics.txt").unwrap();
@@ -71,7 +66,7 @@ impl TerminalEmbedder {
                         }
                     }
                     EngineEvent::Draw(pixel_grid) => {
-                        self.terminal_window.draw(pixel_grid)?;
+                        self.terminal_window.draw(pixel_grid, (0, 0))?;
                     }
                     EngineEvent::EngineTask(engine_task) => {
                         self.platform_task_runner.post_task(engine_task);

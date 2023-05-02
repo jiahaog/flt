@@ -9,6 +9,7 @@ use crossterm::terminal::{
 };
 use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
+use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 use std::ops::Add;
@@ -18,6 +19,8 @@ use std::thread;
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
+    // y of semantics is represented in the "external" height.
+    semantics: HashMap<(usize, usize), String>,
     simple_output: bool,
     event_channel: Receiver<Event>,
 }
@@ -49,6 +52,7 @@ impl TerminalWindow {
         Self {
             stdout,
             lines: vec![],
+            semantics: HashMap::new(),
             simple_output,
             event_channel: receiver,
         }
@@ -66,10 +70,6 @@ impl TerminalWindow {
 
 fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
     internal_height + internal_height
-}
-
-fn to_internal_height(external_height: usize) -> usize {
-    external_height / 2
 }
 
 fn normalize_event_height(event: Event) -> Event {
@@ -103,44 +103,86 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub(crate) fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<(), ErrorKind> {
-        if self.simple_output {
-            return Ok(());
-        }
-
-        let y = to_internal_height(y);
-
-        self.stdout.queue(MoveTo(x as u16, y as u16))?;
-        self.stdout.queue(Print(text))?;
-        self.stdout.flush()?;
-
-        Ok(())
+    pub(crate) fn update_semantics(&mut self, label_positions: Vec<((usize, usize), String)>) {
+        // TODO(jiahaog): This is slow.
+        self.semantics = label_positions
+            .into_iter()
+            // .map(|((x, y), label)| ((x, to_internal_height(y)), label))
+            .collect();
     }
 
-    pub(crate) fn draw(&mut self, mut pixel_grid: Vec<Vec<Pixel>>) -> Result<(), ErrorKind> {
+    pub(crate) fn draw(
+        &mut self,
+        mut pixel_grid: Vec<Vec<Pixel>>,
+        (x_offset, y_offset): (usize, usize),
+    ) -> Result<(), ErrorKind> {
+        // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
             return Ok(());
         }
 
         let width = pixel_grid.first().map_or(0, |row| row.len());
+        let height = pixel_grid.len();
 
         // Always process an even number of rows.
         if pixel_grid.len() % 2 != 0 {
             pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
         }
 
+        // Extend the bounds of the grid to handle the offset.
+        // TODO(jiahaog): This is slow.
+
+        let (terminal_width, terminal_height) = self.size();
+        let terminal_height = to_external_height(terminal_height);
+
+        let height_shortfall = y_offset + terminal_height - height;
+        if height_shortfall > 0 {
+            for _ in 0..height_shortfall {
+                pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
+            }
+        }
+
+        let row_shortfall = x_offset + terminal_width - width;
+        if row_shortfall > 0 {
+            for row in pixel_grid.iter_mut() {
+                row.extend(vec![Pixel::zero(); row_shortfall]);
+            }
+        }
+
         // Each element is one pixel, but when it is rendered to the terminal,
         // two rows share one character, using the unicode BLOCK characters.
-        let lines = (0..pixel_grid.len())
+        let lines = (y_offset..pixel_grid.len())
             .step_by(2)
             .map(|y| {
                 let tops = &pixel_grid[y];
                 let bottoms = &pixel_grid[y + 1];
 
                 zip(tops, bottoms)
-                    .map(|(top, bottom)| TerminalCell {
-                        top: to_color(&top),
-                        bottom: to_color(&bottom),
+                    .enumerate()
+                    .skip(x_offset)
+                    .map(|(x, (top, bottom))| {
+                        // Find the semantic labels for the current cell.
+                        let semantics = match (
+                            self.semantics.get(&(x, y)).cloned(),
+                            // As two rows are merged together, so check the next row as well.
+                            self.semantics.get(&(x, y + 1)).cloned(),
+                        ) {
+                            (None, None) => None,
+                            (None, right) => right,
+                            (left, None) => left,
+                            // Use the longest.
+                            (Some(left), Some(right)) => Some(if left.len() > right.len() {
+                                left
+                            } else {
+                                right
+                            }),
+                        };
+
+                        TerminalCell {
+                            top: to_color(&top),
+                            bottom: to_color(&bottom),
+                            semantics,
+                        }
                     })
                     .collect::<Vec<TerminalCell>>()
             })
@@ -159,14 +201,37 @@ impl TerminalWindow {
             self.lines = vec![vec![]; lines.len()];
         }
 
-        for (i, (prev, current)) in zip(&self.lines, &lines).enumerate() {
+        for (y, (prev, current)) in zip(&self.lines, &lines).enumerate() {
             if !do_vecs_match(prev, current) {
-                self.stdout.queue(MoveTo(0, i as u16))?;
+                self.stdout.queue(MoveTo(0, y as u16))?;
 
-                for TerminalCell { top, bottom } in current {
+                for TerminalCell {
+                    top,
+                    bottom,
+                    semantics: _,
+                } in current
+                {
                     self.stdout.queue(PrintStyledContent(
                         BLOCK_UPPER.to_string().with(*top).on(*bottom),
                     ))?;
+                }
+
+                // Second pass to put semantics over pixels.
+                for (
+                    x,
+                    TerminalCell {
+                        top: _,
+                        bottom: _,
+                        semantics,
+                    },
+                ) in current.into_iter().enumerate()
+                {
+                    if semantics.is_none() {
+                        continue;
+                    }
+                    self.stdout.queue(MoveTo(x as u16, y as u16))?;
+                    // TODO(jiahaog): Reflow within bounding box, or otherwise truncate.
+                    self.stdout.queue(Print(semantics.as_ref().unwrap()))?;
                 }
             }
         }
@@ -179,10 +244,11 @@ impl TerminalWindow {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 struct TerminalCell {
     top: Color,
     bottom: Color,
+    semantics: Option<String>,
 }
 
 fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {

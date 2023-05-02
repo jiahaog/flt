@@ -2,8 +2,6 @@ use flutter_sys::{FlutterSemanticsNode, FlutterTransformation, SemanticsUpdate};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use crate::terminal_window::TerminalWindow;
-
 #[derive(Debug)]
 pub(crate) struct GraphNode {
     pub current: FlutterSemanticsNode,
@@ -16,13 +14,14 @@ pub(crate) struct FlutterSemanticsTree {
 }
 
 impl FlutterSemanticsTree {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             id_map: HashMap::new(),
             adjacency_list: HashMap::new(),
         }
     }
-    pub fn update(&mut self, updates: Vec<SemanticsUpdate>) {
+
+    pub(crate) fn update(&mut self, updates: Vec<SemanticsUpdate>) {
         for SemanticsUpdate { id, children, node } in updates {
             self.id_map.insert(id, node);
 
@@ -30,7 +29,7 @@ impl FlutterSemanticsTree {
         }
     }
 
-    pub fn as_graph(&self) -> GraphNode {
+    pub(crate) fn as_graph(&self) -> GraphNode {
         self.as_graph_recur(ROOT_ID)
     }
 
@@ -47,34 +46,42 @@ impl FlutterSemanticsTree {
 
         GraphNode { current, children }
     }
+
+    pub(crate) fn as_label_positions(&self) -> Vec<((usize, usize), String)> {
+        as_label_positions_recur(FlutterTransformation::empty(), self.as_graph())
+    }
 }
 
 const ROOT_ID: i32 = 0;
 
-pub(crate) fn draw_semantic_labels(
-    terminal_window: &mut TerminalWindow,
+fn as_label_positions_recur(
     parent_merged_transform: FlutterTransformation,
     node: GraphNode,
-) -> Result<(), crossterm::ErrorKind> {
+) -> Vec<((usize, usize), String)> {
     let current = node.current;
 
     let transform = current.transform.merge_with(&parent_merged_transform);
 
-    if !current
+    let mut current = if !current
         .flags
         .contains(&flutter_sys::FlutterSemanticsFlag::IsHidden)
         && !current.label.is_empty()
     {
-        terminal_window.draw_text(
-            (transform.transX * transform.scaleX).round() as usize,
-            (transform.transY * transform.scaleY).round() as usize,
-            &current.label,
-        )?;
-    }
+        vec![(
+            (
+                (transform.transX * transform.scaleX).round() as usize,
+                (transform.transY * transform.scaleY).round() as usize,
+            ),
+            current.label,
+        )]
+    } else {
+        vec![]
+    };
 
     for child in node.children {
-        draw_semantic_labels(terminal_window, transform, child)?;
+        let child_labels = as_label_positions_recur(transform, child);
+        current.extend(child_labels);
     }
 
-    Ok(())
+    current
 }
