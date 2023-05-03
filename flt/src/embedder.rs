@@ -19,6 +19,7 @@ pub struct TerminalEmbedder {
     platform_task_runner: TaskRunner,
     // TODO(jiahaog): This should be a path instead.
     debug_semantics: bool,
+    show_semantics: bool,
 }
 
 impl TerminalEmbedder {
@@ -27,6 +28,7 @@ impl TerminalEmbedder {
         icu_data_path: &str,
         simple_output: bool,
         debug_semantics: bool,
+        show_semantics: bool,
     ) -> Result<Self, Error> {
         let (sender, receiver) = channel();
         let embedder = Self {
@@ -36,6 +38,7 @@ impl TerminalEmbedder {
             terminal_window: TerminalWindow::new(simple_output),
             platform_task_runner: TaskRunner::new(),
             debug_semantics,
+            show_semantics,
         };
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
@@ -57,8 +60,10 @@ impl TerminalEmbedder {
                     EngineEvent::UpdateSemantics(updates) => {
                         self.semantics_tree.update(updates);
 
-                        self.terminal_window
-                            .update_semantics(self.semantics_tree.as_label_positions());
+                        if self.show_semantics {
+                            self.terminal_window
+                                .update_semantics(self.semantics_tree.as_label_positions());
+                        }
 
                         if self.debug_semantics {
                             let mut f = File::create("/tmp/flt-semantics.txt").unwrap();

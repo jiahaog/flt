@@ -18,6 +18,12 @@ struct Args {
     /// `/tmp/flt-semantics.txt` whenever it is updated.
     #[arg(long)]
     debug_semantics: bool,
+
+    /// When enabled, semantic labels will be displayed.
+    ///
+    /// Note that this may be slow.
+    #[arg(long)]
+    show_semantics: bool,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -28,6 +34,7 @@ fn main() -> Result<(), flt::Error> {
         &args.icu_data_path,
         args.simple_output,
         args.debug_semantics,
+        args.show_semantics,
     )?;
 
     embedder.run_event_loop()?;

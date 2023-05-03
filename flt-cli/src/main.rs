@@ -52,10 +52,12 @@ struct Args {
     #[clap(long)]
     local_engine_out_path: Option<String>,
 
-    /// When enabled, the semantics tree will be dumped to
-    /// `/tmp/flt-semantics.txt` whenever it is updated.
-    #[arg(long)]
-    debug_semantics: bool,
+    // TOOD(jiahaog): Find a way to pass this with -- instead.
+    /// Arguments that will be passed to `flt`.
+    ///
+    /// Pass --flt_args=--help to see options.
+    #[clap(long)]
+    flt_args: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -75,7 +77,7 @@ fn main() {
         monorepo_root.to_path_buf(),
         args.flutter_project_path,
         args.local_engine_out_path,
-        args.debug_semantics,
+        args.flt_args,
     );
 
     match (args.debug, args.lldb, args.asan, args.clean) {
@@ -172,7 +174,7 @@ struct Context {
     flutter_project_assets_dir: PathBuf,
     icu_data_path: PathBuf,
     local_engine_out_path: PathBuf,
-    debug_semantics: bool,
+    flt_args: Vec<String>,
 }
 
 impl Context {
@@ -180,7 +182,7 @@ impl Context {
         monorepo_root: PathBuf,
         flutter_project_path: Option<String>,
         local_engine_out_path: Option<String>,
-        debug_semantics: bool,
+        flt_args: Vec<String>,
     ) -> Self {
         let flutter_tools = monorepo_root
             .join("third_party")
@@ -218,7 +220,7 @@ impl Context {
             flutter_project_assets_dir,
             icu_data_path,
             local_engine_out_path,
-            debug_semantics,
+            flt_args,
         }
     }
 
@@ -243,9 +245,7 @@ impl Context {
             ),
         ];
 
-        if self.debug_semantics {
-            result.push("--debug-semantics".to_string());
-        }
+        result.extend(self.flt_args.clone());
         result
     }
 
