@@ -31,6 +31,7 @@ impl TerminalEmbedder {
                     self.engine.update_semantics(self.show_semantics)?;
                     return Ok(true);
                 }
+
                 // TODO(jiahaog): Implement keyboard support.
                 Ok(true)
             }
@@ -40,7 +41,7 @@ impl TerminalEmbedder {
                 row,
                 modifiers,
             }) => {
-                if modifiers.contains(KeyModifiers::ALT) {
+                if modifiers == KeyModifiers::ALT {
                     match kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             self.mouse_down_pos = (column as isize, row as isize);
