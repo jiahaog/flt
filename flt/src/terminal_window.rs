@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 use std::ops::Add;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::Sender;
 use std::thread;
 
 pub struct TerminalWindow {
@@ -23,7 +23,6 @@ pub struct TerminalWindow {
     // See [to_external_height].
     semantics: HashMap<(usize, usize), String>,
     simple_output: bool,
-    event_channel: Receiver<Event>,
 }
 
 impl Drop for TerminalWindow {
@@ -38,7 +37,7 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub(crate) fn new(simple_output: bool) -> Self {
+    pub(crate) fn new(simple_output: bool, event_sender: Sender<Event>) -> Self {
         let mut stdout = stdout();
 
         if !simple_output {
@@ -50,14 +49,12 @@ impl TerminalWindow {
             stdout.execute(EnableMouseCapture).unwrap();
         }
 
-        let (sender, receiver) = channel();
-
         thread::spawn(move || {
             let mut should_run = true;
             while should_run {
                 let event = read().unwrap();
                 let event = normalize_event_height(event);
-                should_run = sender.send(event).is_ok();
+                should_run = event_sender.send(event).is_ok();
             }
         });
 
@@ -66,12 +63,7 @@ impl TerminalWindow {
             lines: vec![],
             semantics: HashMap::new(),
             simple_output,
-            event_channel: receiver,
         }
-    }
-
-    pub(crate) fn event_channel(&self) -> &Receiver<Event> {
-        &self.event_channel
     }
 
     pub(crate) fn size(&self) -> (usize, usize) {

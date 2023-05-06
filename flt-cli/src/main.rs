@@ -124,7 +124,6 @@ fn main() {
                 .args(vec!["-Zbuild-std", "--target", "x86_64-unknown-linux-gnu",])
                 .arg("--")
                 .args(context.flt_args())
-                .arg("--simple-output")
                 .status()
                 .unwrap()
                 .success());

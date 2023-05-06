@@ -34,7 +34,7 @@ impl FlutterEngine {
     pub fn new(
         assets_dir: &str,
         icu_data_path: &str,
-        platform_task_channel: Sender<EngineEvent>,
+        event_sender: Sender<EngineEvent>,
     ) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
@@ -46,10 +46,7 @@ impl FlutterEngine {
             },
         };
 
-        let mut user_data = Box::new(UserData::new(
-            std::thread::current().id(),
-            platform_task_channel,
-        ));
+        let mut user_data = Box::new(UserData::new(std::thread::current().id(), event_sender));
 
         let user_data_ptr: *mut UserData = &mut *user_data;
         let user_data_ptr: *mut std::ffi::c_void = user_data_ptr as *mut std::ffi::c_void;

@@ -1,5 +1,7 @@
 use crate::{sys, user_data::UserData, EngineEvent, Error, FlutterEngine};
 
+unsafe impl Send for EngineTask {}
+
 #[derive(Debug)]
 pub struct EngineTask {
     target_time_nanos: u64,
