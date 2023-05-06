@@ -5,9 +5,7 @@ use crate::{
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use flutter_sys::{
-    FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind, KeyEventType,
-};
+use flutter_sys::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 
 impl TerminalEmbedder {
     /// Returns whether the process should terminate.
@@ -24,10 +22,16 @@ impl TerminalEmbedder {
                 if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('c') {
                     return Ok(false);
                 }
-                if let KeyCode::Char(c) = code {
-                    self.engine.send_key_event(KeyEventType::Down, c)?;
-                    self.engine.send_key_event(KeyEventType::Up, c)?;
+                if modifiers == KeyModifiers::ALT && code == KeyCode::Char('s') {
+                    self.show_semantics = !self.show_semantics;
+                    // Flutter does not update the semantics callback when they are disabled.
+                    if !self.show_semantics {
+                        self.terminal_window.update_semantics(vec![]);
+                    }
+                    self.engine.update_semantics(self.show_semantics)?;
+                    return Ok(true);
                 }
+                // TODO(jiahaog): Implement keyboard support.
                 Ok(true)
             }
             crossterm::event::Event::Mouse(MouseEvent {

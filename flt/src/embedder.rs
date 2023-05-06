@@ -14,11 +14,11 @@ pub struct TerminalEmbedder {
     pub(crate) engine: FlutterEngine,
     platform_task_channel: Receiver<EngineEvent>,
     semantics_tree: FlutterSemanticsTree,
-    terminal_window: TerminalWindow,
+    pub(crate) terminal_window: TerminalWindow,
     platform_task_runner: TaskRunner,
     // TODO(jiahaog): This should be a path instead.
     debug_semantics: bool,
-    show_semantics: bool,
+    pub(crate) show_semantics: bool,
     pub(crate) zoom: f64,
     pub(crate) mouse_down_pos: (isize, isize),
     pub(crate) prev_window_offset: (isize, isize),
@@ -32,7 +32,6 @@ impl TerminalEmbedder {
         icu_data_path: &str,
         simple_output: bool,
         debug_semantics: bool,
-        show_semantics: bool,
     ) -> Result<Self, Error> {
         let (sender, receiver) = channel();
 
@@ -46,7 +45,7 @@ impl TerminalEmbedder {
             semantics_tree: FlutterSemanticsTree::new(),
             platform_task_runner: TaskRunner::new(),
             debug_semantics,
-            show_semantics,
+            show_semantics: false,
             zoom: 1.0,
             mouse_down_pos: (0, 0),
             prev_window_offset: (0, 0),
@@ -55,7 +54,6 @@ impl TerminalEmbedder {
         };
 
         embedder.engine.notify_display_update(FPS as f64)?;
-        embedder.engine.update_semantics(true)?;
         embedder
             .engine
             .send_window_metrics_event(embedder.dimensions, PIXEL_RATIO)?;
