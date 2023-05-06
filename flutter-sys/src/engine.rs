@@ -1,11 +1,9 @@
-use crate::event::EngineEvent;
 use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
 use crate::user_data::UserData;
-use crate::{sys, Error, KeyEventType};
+use crate::{sys, Callbacks, Error, KeyEventType};
 use std::slice;
-use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 pub struct FlutterEngine {
@@ -31,11 +29,7 @@ impl Drop for FlutterEngine {
 }
 
 impl FlutterEngine {
-    pub fn new(
-        assets_dir: &str,
-        icu_data_path: &str,
-        event_sender: Sender<EngineEvent>,
-    ) -> Result<Self, Error> {
+    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: Callbacks) -> Result<Self, Error> {
         let renderer_config = sys::FlutterRendererConfig {
             type_: sys::FlutterRendererType_kSoftware,
             __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
@@ -46,7 +40,7 @@ impl FlutterEngine {
             },
         };
 
-        let mut user_data = Box::new(UserData::new(std::thread::current().id(), event_sender));
+        let mut user_data = Box::new(UserData::new(callbacks));
 
         let user_data_ptr: *mut UserData = &mut *user_data;
         let user_data_ptr: *mut std::ffi::c_void = user_data_ptr as *mut std::ffi::c_void;
@@ -268,9 +262,10 @@ extern "C" fn software_surface_present_callback(
         });
 
     user_data
-        .platform_task_channel
-        .send(EngineEvent::Draw(pixel_grid))
-        .unwrap();
+        .callbacks
+        .draw_callback
+        .as_ref()
+        .map(|callback| callback(pixel_grid));
 
     return true;
 }

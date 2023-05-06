@@ -1,6 +1,7 @@
 //! This should be the only file in this crate which depends on [crossterm]
 //! functionality beyond the data classes.
 
+use crate::event::PlatformEvent;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
@@ -37,7 +38,7 @@ impl Drop for TerminalWindow {
 }
 
 impl TerminalWindow {
-    pub(crate) fn new(simple_output: bool, event_sender: Sender<Event>) -> Self {
+    pub(crate) fn new(simple_output: bool, event_sender: Sender<PlatformEvent>) -> Self {
         let mut stdout = stdout();
 
         if !simple_output {
@@ -54,7 +55,9 @@ impl TerminalWindow {
             while should_run {
                 let event = read().unwrap();
                 let event = normalize_event_height(event);
-                should_run = event_sender.send(event).is_ok();
+                should_run = event_sender
+                    .send(PlatformEvent::TerminalEvent(event))
+                    .is_ok();
             }
         });
 

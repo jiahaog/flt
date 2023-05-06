@@ -1,5 +1,12 @@
-use crate::{ffi::to_string, sys, user_data::UserData, EngineEvent, SemanticsUpdate};
+use crate::{ffi::to_string, sys, user_data::UserData};
 use std::{collections::HashSet, fmt::Debug};
+
+#[derive(Debug)]
+pub struct SemanticsUpdate {
+    pub id: i32,
+    pub children: Vec<i32>,
+    pub node: FlutterSemanticsNode,
+}
 
 pub(crate) extern "C" fn update_semantics_callback(
     semantics_update: *const sys::FlutterSemanticsUpdate,
@@ -47,12 +54,13 @@ pub(crate) extern "C" fn update_semantics_callback(
                 }
             },
         )
-        .collect();
+        .collect::<Vec<SemanticsUpdate>>();
 
     user_data
-        .platform_task_channel
-        .send(EngineEvent::UpdateSemantics(updates))
-        .unwrap();
+        .callbacks
+        .update_semantics_callback
+        .as_ref()
+        .map(|callback| callback(updates));
 }
 
 #[derive(Debug, Clone)]

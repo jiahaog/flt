@@ -1,6 +1,6 @@
 use crate::{
-    ffi::to_string, post_task_callback, runs_task_on_current_thread_callback,
-    semantics::update_semantics_callback, sys, user_data::UserData, EngineEvent,
+    ffi::to_string, post_platform_task_callback, runs_task_on_current_thread_callback,
+    semantics::update_semantics_callback, sys, user_data::UserData,
 };
 use std::ffi::CString;
 
@@ -36,7 +36,7 @@ impl FlutterProjectArgs {
             struct_size: std::mem::size_of::<sys::FlutterTaskRunnerDescription>(),
             user_data: user_data as *mut std::ffi::c_void,
             runs_task_on_current_thread_callback: Some(runs_task_on_current_thread_callback),
-            post_task_callback: Some(post_task_callback),
+            post_task_callback: Some(post_platform_task_callback),
             identifier: 0,
         });
 
@@ -106,7 +106,8 @@ extern "C" fn log_message_callback(
     let message = to_string(message);
 
     user_data
-        .platform_task_channel
-        .send(EngineEvent::LogMessage { tag, message })
-        .unwrap();
+        .callbacks
+        .log_message_callback
+        .as_ref()
+        .map(|callback| callback(tag, message));
 }

@@ -1,4 +1,4 @@
-use crate::{sys, user_data::UserData, EngineEvent, Error, FlutterEngine};
+use crate::{sys, user_data::UserData, Error, FlutterEngine};
 
 unsafe impl Send for EngineTask {}
 
@@ -38,10 +38,14 @@ pub(crate) extern "C" fn runs_task_on_current_thread_callback(
 ) -> bool {
     let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
 
-    std::thread::current().id() == user_data.platform_thread_id
+    user_data
+        .callbacks
+        .platform_task_runs_task_on_current_thread_callback
+        .as_ref()
+        .map_or(true, |callback| callback())
 }
 
-pub(crate) extern "C" fn post_task_callback(
+pub(crate) extern "C" fn post_platform_task_callback(
     task: sys::FlutterTask,
     target_time_nanos: u64,
     user_data: *mut ::std::os::raw::c_void,
@@ -51,7 +55,8 @@ pub(crate) extern "C" fn post_task_callback(
     let task = EngineTask::new(target_time_nanos, task);
 
     user_data
-        .platform_task_channel
-        .send(EngineEvent::EngineTask(task))
-        .unwrap();
+        .callbacks
+        .post_platform_task_callback
+        .as_ref()
+        .map(|callback| callback(task));
 }

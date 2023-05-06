@@ -1,6 +1,6 @@
+mod callbacks;
 mod engine;
 mod error;
-mod event;
 mod ffi;
 mod key;
 mod pixel;
@@ -11,9 +11,9 @@ mod sys;
 mod task;
 mod user_data;
 
+pub use callbacks::*;
 pub use engine::*;
 pub use error::*;
-pub use event::*;
 pub use key::*;
 pub use pixel::*;
 pub use pointer::*;

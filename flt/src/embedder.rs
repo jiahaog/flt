@@ -1,9 +1,10 @@
 use crate::constants::{FPS, PIXEL_RATIO};
+use crate::event::{EngineEvent, PlatformEvent};
 use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
 use crate::terminal_window::TerminalWindow;
 use crate::Error;
-use flutter_sys::{EngineEvent, FlutterEngine};
+use flutter_sys::{Callbacks, FlutterEngine};
 use std::io::Write;
 use std::thread;
 use std::{
@@ -27,11 +28,6 @@ pub struct TerminalEmbedder {
     pub(crate) dimensions: (usize, usize),
 }
 
-enum PlatformEvent {
-    EngineEvent(EngineEvent),
-    TerminalEvent(crossterm::event::Event),
-}
-
 impl TerminalEmbedder {
     pub fn new(
         assets_dir: &str,
@@ -40,38 +36,55 @@ impl TerminalEmbedder {
         debug_semantics: bool,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
-        let (engine_sender, engine_receiver) = channel();
-        let (terminal_sender, terminal_receiver) = channel();
 
-        let terminal_window = TerminalWindow::new(simple_output, terminal_sender);
+        let terminal_window = TerminalWindow::new(simple_output, main_sender.clone());
 
-        // Compose channels into one because there is no other way to do a blocking
-        // subscription to multiple channels simutaneously without dependencies.
-        // TODO(jiahaog): Consider async Rust or Tokio instead.
-        {
-            let engine_main_sender = main_sender.clone();
-            thread::spawn(move || {
-                for event in engine_receiver {
-                    engine_main_sender
-                        .send(PlatformEvent::EngineEvent(event))
+        let callbacks = {
+            let (sender_a, sender_b, sender_c, sender_d) = (
+                main_sender.clone(),
+                main_sender.clone(),
+                main_sender.clone(),
+                main_sender.clone(),
+            );
+
+            let platform_thread_id = thread::current().id();
+
+            Callbacks {
+                post_platform_task_callback: Some(Box::new(move |task| {
+                    sender_a
+                        .send(PlatformEvent::EngineEvent(EngineEvent::EngineTask(task)))
                         .unwrap();
-                }
-            });
-
-            let terminal_main_sender = main_sender.clone();
-            thread::spawn(move || {
-                for event in terminal_receiver {
-                    terminal_main_sender
-                        .send(PlatformEvent::TerminalEvent(event))
+                })),
+                platform_task_runs_task_on_current_thread_callback: Some(Box::new(move || {
+                    thread::current().id() == platform_thread_id
+                })),
+                log_message_callback: Some(Box::new(move |tag, message| {
+                    sender_b
+                        .send(PlatformEvent::EngineEvent(EngineEvent::LogMessage {
+                            tag,
+                            message,
+                        }))
                         .unwrap();
-                }
-            });
-        }
+                })),
+                update_semantics_callback: Some(Box::new(move |updates| {
+                    sender_c
+                        .send(PlatformEvent::EngineEvent(EngineEvent::UpdateSemantics(
+                            updates,
+                        )))
+                        .unwrap();
+                })),
+                draw_callback: Some(Box::new(move |pixel_grid| {
+                    sender_d
+                        .send(PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)))
+                        .unwrap();
+                })),
+            }
+        };
 
         let dimensions = terminal_window.size();
 
         let embedder = Self {
-            engine: FlutterEngine::new(assets_dir, icu_data_path, engine_sender)?,
+            engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
             platform_events: main_receiver,
             terminal_window,
             semantics_tree: FlutterSemanticsTree::new(),
@@ -96,6 +109,7 @@ impl TerminalEmbedder {
     pub fn run_event_loop(&mut self) -> Result<(), Error> {
         let mut should_run = true;
 
+        // TODO(jiahaog): Consider async Rust or Tokio instead.
         while should_run {
             if let Ok(platform_task) = self.platform_events.recv() {
                 match platform_task {
@@ -126,6 +140,8 @@ impl TerminalEmbedder {
                 };
             }
 
+            // TODO(jiahaog): Doing it like this probably makes us only able to run expired
+            // tasks when a platform event is received.
             self.platform_task_runner.run_expired_tasks(&self.engine)?;
         }
 
