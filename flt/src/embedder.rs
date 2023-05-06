@@ -81,9 +81,7 @@ impl TerminalEmbedder {
             }
         };
 
-        let dimensions = terminal_window.size();
-
-        let embedder = Self {
+        let mut embedder = Self {
             engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
             platform_events: main_receiver,
             terminal_window,
@@ -95,15 +93,26 @@ impl TerminalEmbedder {
             mouse_down_pos: (0, 0),
             prev_window_offset: (0, 0),
             window_offset: (0, 0),
-            dimensions,
+            dimensions: (0, 0),
         };
 
         embedder.engine.notify_display_update(FPS as f64)?;
-        embedder
-            .engine
-            .send_window_metrics_event(embedder.dimensions, PIXEL_RATIO)?;
+        embedder.reset_viewport()?;
 
         Ok(embedder)
+    }
+
+    pub(crate) fn reset_viewport(&mut self) -> Result<(), Error> {
+        self.mouse_down_pos = (0, 0);
+        self.prev_window_offset = (0, 0);
+        self.window_offset = (0, 0);
+        self.dimensions = self.terminal_window.size();
+
+        self.engine
+            .send_window_metrics_event(self.terminal_window.size(), PIXEL_RATIO)?;
+        self.engine.schedule_frame()?;
+
+        Ok(())
     }
 
     pub fn run_event_loop(&mut self) -> Result<(), Error> {

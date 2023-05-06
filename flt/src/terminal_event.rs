@@ -1,6 +1,6 @@
 use crate::{
     constants::{PIXEL_RATIO, SCROLL_DELTA, ZOOM_FACTOR},
-    TerminalEmbedder,
+    Error, TerminalEmbedder,
 };
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -9,10 +9,7 @@ use flutter_sys::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointer
 
 impl TerminalEmbedder {
     /// Returns whether the process should terminate.
-    pub(crate) fn handle_terminal_event(
-        &mut self,
-        event: Event,
-    ) -> Result<bool, flutter_sys::Error> {
+    pub(crate) fn handle_terminal_event(&mut self, event: Event) -> Result<bool, Error> {
         match event {
             crossterm::event::Event::FocusGained => todo!(),
             crossterm::event::Event::FocusLost => todo!(),
@@ -29,6 +26,10 @@ impl TerminalEmbedder {
                         self.terminal_window.update_semantics(vec![]);
                     }
                     self.engine.update_semantics(self.show_semantics)?;
+                    return Ok(true);
+                }
+                if modifiers == KeyModifiers::ALT && code == KeyCode::Char('r') {
+                    self.reset_viewport()?;
                     return Ok(true);
                 }
 
@@ -137,6 +138,7 @@ impl TerminalEmbedder {
             }
             crossterm::event::Event::Paste(_) => todo!(),
             crossterm::event::Event::Resize(columns, rows) => {
+                self.dimensions = (columns as usize, rows as usize);
                 self.engine
                     .send_window_metrics_event((columns as usize, rows as usize), PIXEL_RATIO)?;
                 Ok(true)

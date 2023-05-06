@@ -206,6 +206,14 @@ impl FlutterEngine {
         // }
         Ok(())
     }
+
+    pub fn schedule_frame(&self) -> Result<(), Error> {
+        let result = unsafe { sys::FlutterEngineScheduleFrame(self.get_engine()) };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
+    }
 }
 
 extern "C" fn software_surface_present_callback(
