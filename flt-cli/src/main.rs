@@ -116,7 +116,6 @@ fn main() {
 
             let mut cargo_command = context.cargo_command();
             cargo_command
-                .arg("build")
                 .env("RUSTFLAGS", "-Zsanitizer=address")
                 .args(vec!["run", "--package", "flt"])
                 .args(vec!["-Zbuild-std", "--target", "x86_64-unknown-linux-gnu"]);
