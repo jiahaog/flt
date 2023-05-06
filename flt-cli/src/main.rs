@@ -16,22 +16,19 @@ use clap::{ArgGroup, Parser, ValueEnum};
 #[command(author, version, about)]
 #[clap(group(
             ArgGroup::new("mode")
-                // Want --debug to always be the default when not passed. Hence:
-                // 1. Set required false here.
-                // 2. Set `default_value_t` for `debug` in `Args`.
-                // 3. Put the match case for debug at the end, so if --clean is
-                //    passed on the command line, debug doesn't take precedence.
                 .required(false)
-                .args(&["debug", "lldb", "asan", "clean"]),
+                .args(&["lldb", "asan", "clean"]),
         ))]
 struct Args {
     /// Path to the Flutter project.
     flutter_project_path: Option<String>,
 
-    /// (Default) Build artifacts without optimizations, and then runs the flt
-    /// embedder.
-    #[clap(long, default_value_t = true)]
-    debug: bool,
+    // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
+    /// Build artifacts in release mode, with optimizations.
+    ///
+    /// The build mode for the Flutter project will always be "debug mode".
+    #[clap(long)]
+    release: bool,
 
     /// Run with the lldb debugger attached and primed. Requires rust-lldb.
     #[clap(long)]
@@ -80,9 +77,9 @@ fn main() {
         args.flt_args,
     );
 
-    match (args.debug, args.lldb, args.asan, args.clean) {
+    match (args.lldb, args.asan, args.clean) {
         // lldb.
-        (_, true, _, _) => {
+        (true, _, _) => {
             assert!(context
                 .flutter_tools_command()
                 .args(vec!["build", "bundle"])
@@ -90,12 +87,12 @@ fn main() {
                 .unwrap()
                 .success());
 
-            assert!(context
-                .cargo_command()
-                .arg("build")
-                .status()
-                .unwrap()
-                .success());
+            let mut cargo_command = context.cargo_command();
+            cargo_command.arg("build");
+            if args.release {
+                cargo_command.arg("--release");
+            }
+            assert!(cargo_command.status().unwrap().success());
 
             assert!(Command::new("rust-lldb")
                 .current_dir(context.monorepo_root.clone())
@@ -109,7 +106,7 @@ fn main() {
                 .success());
         }
         // Asan.
-        (_, _, true, _) => {
+        (_, true, _) => {
             assert!(context
                 .flutter_tools_command()
                 .args(vec!["build", "bundle"])
@@ -117,11 +114,16 @@ fn main() {
                 .unwrap()
                 .success());
 
-            assert!(context
-                .cargo_command()
+            let mut cargo_command = context.cargo_command();
+            cargo_command
+                .arg("build")
                 .env("RUSTFLAGS", "-Zsanitizer=address")
-                .args(vec!["run", "--package", "flt",])
-                .args(vec!["-Zbuild-std", "--target", "x86_64-unknown-linux-gnu",])
+                .args(vec!["run", "--package", "flt"])
+                .args(vec!["-Zbuild-std", "--target", "x86_64-unknown-linux-gnu"]);
+            if args.release {
+                cargo_command.arg("--release");
+            }
+            assert!(cargo_command
                 .arg("--")
                 .args(context.flt_args())
                 .status()
@@ -129,7 +131,7 @@ fn main() {
                 .success());
         }
         // Clean.
-        (_, _, _, true) => {
+        (_, _, true) => {
             assert!(context
                 .flutter_tools_command()
                 .arg("clean")
@@ -144,8 +146,8 @@ fn main() {
                 .unwrap()
                 .success());
         }
-        // Debug. This needs to be last - see [Args].
-        (true, _, _, _) => {
+        // Default. This needs to be last.
+        (_, _, _) => {
             assert!(context
                 .flutter_tools_command()
                 .args(vec!["build", "bundle"])
@@ -153,16 +155,18 @@ fn main() {
                 .unwrap()
                 .success());
 
-            assert!(context
-                .cargo_command()
-                .args(vec!["run", "--package", "flt"])
+            let mut cargo_command = context.cargo_command();
+            cargo_command.args(vec!["run", "--package", "flt"]);
+            if args.release {
+                cargo_command.arg("--release");
+            }
+            assert!(cargo_command
                 .arg("--")
                 .args(context.flt_args())
                 .status()
                 .unwrap()
                 .success());
         }
-        _ => unreachable!(),
     }
 }
 
