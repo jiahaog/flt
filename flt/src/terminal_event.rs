@@ -65,8 +65,10 @@ impl TerminalEmbedder {
 
                             // TODO(jiahaog): Zoom towards the cursor instead of the top left.
                             self.engine.send_window_metrics_event(
-                                (self.dimensions.0 as f64 * self.zoom).round() as usize,
-                                (self.dimensions.1 as f64 * self.zoom).round() as usize,
+                                (
+                                    (self.dimensions.0 as f64 * self.zoom).round() as usize,
+                                    (self.dimensions.1 as f64 * self.zoom).round() as usize,
+                                ),
                                 PIXEL_RATIO * self.zoom,
                             )?;
                         }
@@ -77,8 +79,7 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
                             self.engine.send_pointer_event(
                                 FlutterPointerPhase::Down,
-                                column as f64,
-                                row as f64,
+                                (column as f64, row as f64),
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
@@ -87,8 +88,7 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::Up(mouse_button) => {
                             self.engine.send_pointer_event(
                                 FlutterPointerPhase::Up,
-                                column as f64,
-                                row as f64,
+                                (column as f64, row as f64),
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![to_mouse_button(mouse_button)],
@@ -98,8 +98,7 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::Moved => {
                             self.engine.send_pointer_event(
                                 FlutterPointerPhase::Hover,
-                                column as f64,
-                                row as f64,
+                                (column as f64, row as f64),
                                 FlutterPointerSignalKind::None,
                                 0.0,
                                 vec![],
@@ -108,8 +107,7 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::ScrollUp => {
                             self.engine.send_pointer_event(
                                 FlutterPointerPhase::Up,
-                                column as f64,
-                                row as f64,
+                                (column as f64, row as f64),
                                 FlutterPointerSignalKind::Scroll,
                                 -SCROLL_DELTA,
                                 vec![],
@@ -118,8 +116,7 @@ impl TerminalEmbedder {
                         crossterm::event::MouseEventKind::ScrollDown => {
                             self.engine.send_pointer_event(
                                 FlutterPointerPhase::Down,
-                                column as f64,
-                                row as f64,
+                                (column as f64, row as f64),
                                 FlutterPointerSignalKind::Scroll,
                                 SCROLL_DELTA,
                                 vec![],
@@ -131,11 +128,8 @@ impl TerminalEmbedder {
             }
             crossterm::event::Event::Paste(_) => todo!(),
             crossterm::event::Event::Resize(columns, rows) => {
-                self.engine.send_window_metrics_event(
-                    columns as usize,
-                    rows as usize,
-                    PIXEL_RATIO,
-                )?;
+                self.engine
+                    .send_window_metrics_event((columns as usize, rows as usize), PIXEL_RATIO)?;
                 Ok(true)
             }
         }

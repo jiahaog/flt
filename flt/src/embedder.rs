@@ -56,11 +56,9 @@ impl TerminalEmbedder {
 
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
-        embedder.engine.send_window_metrics_event(
-            embedder.dimensions.0,
-            embedder.dimensions.1,
-            PIXEL_RATIO,
-        )?;
+        embedder
+            .engine
+            .send_window_metrics_event(embedder.dimensions, PIXEL_RATIO)?;
 
         Ok(embedder)
     }

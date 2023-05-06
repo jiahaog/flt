@@ -123,8 +123,7 @@ impl FlutterEngine {
 
     pub fn send_window_metrics_event(
         &self,
-        width: usize,
-        height: usize,
+        (width, height): (usize, usize),
         pixel_ratio: f64,
     ) -> Result<(), Error> {
         let event = sys::FlutterWindowMetricsEvent {
@@ -155,8 +154,7 @@ impl FlutterEngine {
     pub fn send_pointer_event(
         &self,
         phase: FlutterPointerPhase,
-        x: f64,
-        y: f64,
+        (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
         scroll_delta_y: f64,
         buttons: Vec<FlutterPointerMouseButton>,
