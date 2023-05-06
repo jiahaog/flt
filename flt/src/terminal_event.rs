@@ -81,8 +81,8 @@ impl TerminalEmbedder {
                     }
                 } else {
                     let (column, row) = (
-                        column + self.window_offset.0 as u16,
-                        row + self.window_offset.1 as u16,
+                        column as f64 + self.window_offset.0 as f64,
+                        row as f64 + self.window_offset.1 as f64,
                     );
                     match kind {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
