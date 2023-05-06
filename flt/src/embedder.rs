@@ -102,10 +102,8 @@ impl TerminalEmbedder {
                     PlatformEvent::EngineEvent(EngineEvent::UpdateSemantics(updates)) => {
                         self.semantics_tree.update(updates);
 
-                        if self.show_semantics {
-                            self.terminal_window
-                                .update_semantics(self.semantics_tree.as_label_positions());
-                        }
+                        self.terminal_window
+                            .update_semantics(self.semantics_tree.as_label_positions());
 
                         if self.debug_semantics {
                             let mut f = File::create("/tmp/flt-semantics.txt").unwrap();
