@@ -80,6 +80,10 @@ impl TerminalEmbedder {
                         _ => (),
                     }
                 } else {
+                    let (column, row) = (
+                        column + self.window_offset.0 as u16,
+                        row + self.window_offset.1 as u16,
+                    );
                     match kind {
                         crossterm::event::MouseEventKind::Down(mouse_button) => {
                             self.engine.send_pointer_event(
