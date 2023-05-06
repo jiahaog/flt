@@ -19,10 +19,22 @@ use std::thread;
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
-    // y of semantics is represented in the "external" height.
+    // Coordinates of semantics is represented in the "external" height.
+    // See [to_external_height].
     semantics: HashMap<(usize, usize), String>,
     simple_output: bool,
     event_channel: Receiver<Event>,
+}
+
+impl Drop for TerminalWindow {
+    fn drop(&mut self) {
+        if !self.simple_output {
+            self.stdout.execute(DisableMouseCapture).unwrap();
+            disable_raw_mode().unwrap();
+            self.stdout.execute(Show).unwrap();
+            self.stdout.execute(LeaveAlternateScreen).unwrap();
+        }
+    }
 }
 
 impl TerminalWindow {
@@ -66,43 +78,7 @@ impl TerminalWindow {
         let (width, height) = size().unwrap();
         (width as usize, to_external_height(height) as usize)
     }
-}
 
-fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
-    internal_height + internal_height
-}
-
-fn normalize_event_height(event: Event) -> Event {
-    match event {
-        Event::Resize(columns, rows) => Event::Resize(columns, to_external_height(rows)),
-        Event::Mouse(mut mouse_event) => {
-            mouse_event.row = to_external_height(mouse_event.row);
-            Event::Mouse(mouse_event)
-        }
-        x => x,
-    }
-}
-
-fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
-    Color::Rgb {
-        r: *r,
-        g: *g,
-        b: *b,
-    }
-}
-
-impl Drop for TerminalWindow {
-    fn drop(&mut self) {
-        if !self.simple_output {
-            self.stdout.execute(DisableMouseCapture).unwrap();
-            disable_raw_mode().unwrap();
-            self.stdout.execute(Show).unwrap();
-            self.stdout.execute(LeaveAlternateScreen).unwrap();
-        }
-    }
-}
-
-impl TerminalWindow {
     pub(crate) fn update_semantics(&mut self, label_positions: Vec<((usize, usize), String)>) {
         // TODO(jiahaog): This is slow.
         self.semantics = label_positions
@@ -114,7 +90,7 @@ impl TerminalWindow {
     pub(crate) fn draw(
         &mut self,
         mut pixel_grid: Vec<Vec<Pixel>>,
-        (x_offset, y_offset): (usize, usize),
+        (x_offset, y_offset): (isize, isize),
     ) -> Result<(), ErrorKind> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
@@ -122,68 +98,86 @@ impl TerminalWindow {
         }
 
         let width = pixel_grid.first().map_or(0, |row| row.len());
-        let height = pixel_grid.len();
 
         // Always process an even number of rows.
         if pixel_grid.len() % 2 != 0 {
             pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
         }
 
-        // Extend the bounds of the grid to handle the offset.
-        // TODO(jiahaog): This is slow.
+        let grid_with_semantics: Vec<Vec<(Pixel, Option<String>)>> = pixel_grid
+            .into_iter()
+            .enumerate()
+            .map(|(y, row)| {
+                row.into_iter()
+                    .enumerate()
+                    .map(|(x, pixel)| (pixel, self.semantics.get(&(x, y)).cloned()))
+                    .collect()
+            })
+            .collect();
 
         let (terminal_width, terminal_height) = self.size();
         let terminal_height = to_external_height(terminal_height);
 
-        let height_shortfall = y_offset + terminal_height - height;
-        if height_shortfall > 0 {
-            for _ in 0..height_shortfall {
-                pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
-            }
-        }
+        let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..terminal_height)
+            .map(|y| {
+                let y = y_offset + y as isize;
+                if y < 0 || y >= grid_with_semantics.len() as isize {
+                    return vec![(Pixel::zero(), None); terminal_width];
+                }
 
-        let row_shortfall = x_offset + terminal_width - width;
-        if row_shortfall > 0 {
-            for row in pixel_grid.iter_mut() {
-                row.extend(vec![Pixel::zero(); row_shortfall]);
-            }
-        }
+                let y = y as usize;
+
+                (0..terminal_width)
+                    .map(|x| {
+                        let x = x_offset + x as isize;
+
+                        if x < 0 || x >= grid_with_semantics.first().unwrap().len() as isize {
+                            return (Pixel::zero(), None);
+                        }
+
+                        let x = x as usize;
+
+                        grid_with_semantics[y][x].clone()
+                    })
+                    .collect()
+            })
+            .collect();
+
+        assert!(grid_for_terminal.len() == terminal_height);
+        assert!(grid_for_terminal.first().unwrap().len() == terminal_width);
 
         // Each element is one pixel, but when it is rendered to the terminal,
         // two rows share one character, using the unicode BLOCK characters.
-        let lines = (y_offset..pixel_grid.len())
+        let lines = (0..grid_for_terminal.len())
             .step_by(2)
             .map(|y| {
-                let tops = &pixel_grid[y];
-                let bottoms = &pixel_grid[y + 1];
+                // TODO(jiahaog): Avoid the borrow here.
+                let tops = &grid_for_terminal[y];
+                let bottoms = &grid_for_terminal[y + 1];
 
                 zip(tops, bottoms)
-                    .enumerate()
-                    .skip(x_offset)
-                    .map(|(x, (top, bottom))| {
-                        // Find the semantic labels for the current cell.
-                        let semantics = match (
-                            self.semantics.get(&(x, y)).cloned(),
-                            // As two rows are merged together, so check the next row as well.
-                            self.semantics.get(&(x, y + 1)).cloned(),
-                        ) {
-                            (None, None) => None,
-                            (None, right) => right,
-                            (left, None) => left,
-                            // Use the longest.
-                            (Some(left), Some(right)) => Some(if left.len() > right.len() {
-                                left
-                            } else {
-                                right
-                            }),
-                        };
+                    .map(
+                        |((top_pixel, top_semantics), (bottom_pixel, bottom_semantics))| {
+                            // Find the semantic labels for the current cell.
+                            let semantics = match (top_semantics, bottom_semantics) {
+                                (None, None) => None,
+                                (None, right) => right.clone(),
+                                (left, None) => left.clone(),
+                                // Use the longest.
+                                (Some(left), Some(right)) => Some(if left.len() > right.len() {
+                                    left.clone()
+                                } else {
+                                    right.clone()
+                                }),
+                            };
 
-                        TerminalCell {
-                            top: to_color(&top),
-                            bottom: to_color(&bottom),
-                            semantics,
-                        }
-                    })
+                            TerminalCell {
+                                top: to_color(&top_pixel),
+                                bottom: to_color(&bottom_pixel),
+                                semantics,
+                            }
+                        },
+                    )
                     .collect::<Vec<TerminalCell>>()
             })
             .collect::<Vec<Vec<TerminalCell>>>();
@@ -257,3 +251,34 @@ fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {
 }
 
 const BLOCK_UPPER: char = '▀';
+
+/// Translates from a "Internal" height to a "External" height.
+///
+/// "External" height is the height seen by users of this class.
+/// "Internal" height is the height actually used when reading / writing to the
+/// terminal.
+///
+/// Translation is needed as the terminal drawing strategy merges two lines of
+/// pixels (seen to external users) into one line when written to the terminal.
+fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
+    internal_height + internal_height
+}
+
+fn normalize_event_height(event: Event) -> Event {
+    match event {
+        Event::Resize(columns, rows) => Event::Resize(columns, to_external_height(rows)),
+        Event::Mouse(mut mouse_event) => {
+            mouse_event.row = to_external_height(mouse_event.row);
+            Event::Mouse(mouse_event)
+        }
+        x => x,
+    }
+}
+
+fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
+    Color::Rgb {
+        r: *r,
+        g: *g,
+        b: *b,
+    }
+}

@@ -1,7 +1,6 @@
 use crate::constants::{FPS, PIXEL_RATIO};
 use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
-use crate::terminal_event::handle_terminal_event;
 use crate::terminal_window::TerminalWindow;
 use crate::Error;
 use flutter_sys::{EngineEvent, FlutterEngine};
@@ -12,7 +11,7 @@ use std::{
 };
 
 pub struct TerminalEmbedder {
-    engine: FlutterEngine,
+    pub(crate) engine: FlutterEngine,
     platform_task_channel: Receiver<EngineEvent>,
     semantics_tree: FlutterSemanticsTree,
     terminal_window: TerminalWindow,
@@ -20,6 +19,11 @@ pub struct TerminalEmbedder {
     // TODO(jiahaog): This should be a path instead.
     debug_semantics: bool,
     show_semantics: bool,
+    pub(crate) zoom: f64,
+    pub(crate) mouse_down_pos: (isize, isize),
+    pub(crate) prev_window_offset: (isize, isize),
+    pub(crate) window_offset: (isize, isize),
+    pub(crate) dimensions: (usize, usize),
 }
 
 impl TerminalEmbedder {
@@ -31,22 +35,32 @@ impl TerminalEmbedder {
         show_semantics: bool,
     ) -> Result<Self, Error> {
         let (sender, receiver) = channel();
+
+        let terminal_window = TerminalWindow::new(simple_output);
+        let dimensions = terminal_window.size();
+
         let embedder = Self {
             engine: FlutterEngine::new(assets_dir, icu_data_path, sender)?,
             platform_task_channel: receiver,
+            terminal_window,
             semantics_tree: FlutterSemanticsTree::new(),
-            terminal_window: TerminalWindow::new(simple_output),
             platform_task_runner: TaskRunner::new(),
             debug_semantics,
             show_semantics,
+            zoom: 1.0,
+            mouse_down_pos: (0, 0),
+            prev_window_offset: (0, 0),
+            window_offset: (0, 0),
+            dimensions,
         };
+
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.engine.update_semantics(true)?;
-
-        let (width, height) = embedder.terminal_window.size();
-        embedder
-            .engine
-            .send_window_metrics_event(width, height, PIXEL_RATIO)?;
+        embedder.engine.send_window_metrics_event(
+            embedder.dimensions.0,
+            embedder.dimensions.1,
+            PIXEL_RATIO,
+        )?;
 
         Ok(embedder)
     }
@@ -54,6 +68,7 @@ impl TerminalEmbedder {
     pub fn run_event_loop(&mut self) -> Result<(), Error> {
         let mut should_run = true;
 
+        // TODO(jiahaog): Don't spin.
         while should_run {
             if let Ok(platform_task) = self.platform_task_channel.try_recv() {
                 match platform_task {
@@ -71,7 +86,7 @@ impl TerminalEmbedder {
                         }
                     }
                     EngineEvent::Draw(pixel_grid) => {
-                        self.terminal_window.draw(pixel_grid, (0, 0))?;
+                        self.terminal_window.draw(pixel_grid, self.window_offset)?;
                     }
                     EngineEvent::EngineTask(engine_task) => {
                         self.platform_task_runner.post_task(engine_task);
@@ -80,11 +95,11 @@ impl TerminalEmbedder {
                         // TODO(jiahaog): Print to the main terminal.
                         println!("{tag}: {message}");
                     }
-                }
+                };
             }
 
             if let Ok(terminal_event) = self.terminal_window.event_channel().try_recv() {
-                should_run = handle_terminal_event(&self.engine, terminal_event)?;
+                should_run = self.handle_terminal_event(terminal_event)?;
             }
 
             self.platform_task_runner.run_expired_tasks(&self.engine)?;
