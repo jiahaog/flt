@@ -220,10 +220,10 @@ extern "C" fn software_surface_present_callback(
     row_bytes: usize,
     height: usize,
 ) -> bool {
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
+
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
-
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
 
     // In allocation, each group of 4 bits represents a pixel. In order, each of
     // the 4 bits will be [b, g, r, a].

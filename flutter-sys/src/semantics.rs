@@ -5,7 +5,7 @@ pub(crate) extern "C" fn update_semantics_callback(
     semantics_update: *const sys::FlutterSemanticsUpdate,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
 
     let sys::FlutterSemanticsUpdate {
         nodes_count, nodes, ..

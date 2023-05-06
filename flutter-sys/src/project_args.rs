@@ -101,7 +101,7 @@ extern "C" fn log_message_callback(
     message: *const ::std::os::raw::c_char,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
     let tag = to_string(tag);
     let message = to_string(message);
 

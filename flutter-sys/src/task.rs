@@ -36,7 +36,7 @@ impl EngineTask {
 pub(crate) extern "C" fn runs_task_on_current_thread_callback(
     user_data: *mut ::std::os::raw::c_void,
 ) -> bool {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
 
     std::thread::current().id() == user_data.platform_thread_id
 }
@@ -46,7 +46,7 @@ pub(crate) extern "C" fn post_task_callback(
     target_time_nanos: u64,
     user_data: *mut ::std::os::raw::c_void,
 ) {
-    let user_data: &mut UserData = unsafe { std::mem::transmute(user_data) };
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
 
     let task = EngineTask::new(target_time_nanos, task);
 
