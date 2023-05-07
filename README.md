@@ -27,7 +27,7 @@ git clone --recurse-submodules git@github.com:jiahaog/flt.git
 
 ## Usage
 
-At the root of the monorepo, the following command will build the [Sample Flutter App](./sample_app/), and then run it with the terminal embedder.
+Install [Rust](https://www.rust-lang.org/tools/install) first, then at the root of the monorepo, the following command will build the [Sample Flutter App](./sample_app/), and run it with the terminal embedder.
 
 ```sh
 cargo run
