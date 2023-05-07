@@ -54,6 +54,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _counter++;
     });
 
+    // Used to test print output.
+    // ignore: avoid_print
     print("counter $_counter");
   }
 

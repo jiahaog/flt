@@ -15,6 +15,9 @@ fn main() {
     } else {
         // On Linux, it is sufficient to set this environment variable to find the
         // `libflutter_engine.so` at runtime.
+        //
+        // Note that this is an environment set at **runtime** when only when running
+        // with `cargo run`.
         println!("cargo:rustc-env=LD_LIBRARY_PATH={flutter_engine_lib_path}");
     }
 }
