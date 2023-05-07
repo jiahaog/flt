@@ -1,4 +1,4 @@
-use crate::constants::{FPS, PIXEL_RATIO};
+use crate::constants::{DEFAULT_PIXEL_RATIO, FPS};
 use crate::event::{EngineEvent, PlatformEvent};
 use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
@@ -21,11 +21,12 @@ pub struct TerminalEmbedder {
     // TODO(jiahaog): This should be a path instead.
     debug_semantics: bool,
     pub(crate) show_semantics: bool,
-    pub(crate) zoom: f64,
-    pub(crate) mouse_down_pos: (isize, isize),
-    pub(crate) prev_window_offset: (isize, isize),
-    pub(crate) window_offset: (isize, isize),
     pub(crate) dimensions: (usize, usize),
+    pub(crate) zoom: f64,
+    pub(crate) scale: f64,
+    pub(crate) window_offset: (isize, isize),
+    pub(crate) prev_window_offset: (isize, isize),
+    pub(crate) mouse_down_pos: (isize, isize),
 }
 
 impl TerminalEmbedder {
@@ -89,29 +90,34 @@ impl TerminalEmbedder {
             platform_task_runner: TaskRunner::new(),
             debug_semantics,
             show_semantics: false,
-            zoom: 1.0,
-            mouse_down_pos: (0, 0),
-            prev_window_offset: (0, 0),
-            window_offset: (0, 0),
             dimensions: (0, 0),
+            zoom: 1.0,
+            scale: 1.0,
+            window_offset: (0, 0),
+            prev_window_offset: (0, 0),
+            mouse_down_pos: (0, 0),
         };
 
         embedder.engine.notify_display_update(FPS as f64)?;
         embedder.reset_viewport()?;
 
+        // This event sets the engine window dimensions which will kickstart rendering.
+        main_sender
+            .send(PlatformEvent::EngineEvent(EngineEvent::Draw(vec![])))
+            .unwrap();
+
         Ok(embedder)
     }
 
     pub(crate) fn reset_viewport(&mut self) -> Result<(), Error> {
-        self.mouse_down_pos = (0, 0);
-        self.prev_window_offset = (0, 0);
-        self.window_offset = (0, 0);
         self.dimensions = self.terminal_window.size();
+        self.zoom = 1.0;
+        self.scale = 1.0;
+        self.window_offset = (0, 0);
+        self.prev_window_offset = (0, 0);
+        self.mouse_down_pos = (0, 0);
 
-        self.engine
-            .send_window_metrics_event(self.terminal_window.size(), PIXEL_RATIO)?;
         self.engine.schedule_frame()?;
-
         Ok(())
     }
 
@@ -134,6 +140,16 @@ impl TerminalEmbedder {
                         }
                     }
                     PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)) => {
+                        // Not sure if doing this on every frame is ok, hoping that the engine has
+                        // some mechanism to make this a no-op if the parameters are unchanged.
+                        self.engine.send_window_metrics_event(
+                            (
+                                (self.dimensions.0 as f64 * self.zoom).round() as usize,
+                                (self.dimensions.1 as f64 * self.zoom).round() as usize,
+                            ),
+                            DEFAULT_PIXEL_RATIO * self.zoom * self.scale,
+                        )?;
+
                         self.terminal_window.draw(pixel_grid, self.window_offset)?;
                     }
                     PlatformEvent::EngineEvent(EngineEvent::EngineTask(engine_task)) => {

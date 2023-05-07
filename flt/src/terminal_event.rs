@@ -1,5 +1,5 @@
 use crate::{
-    constants::{PIXEL_RATIO, SCROLL_DELTA, ZOOM_FACTOR},
+    constants::{SCROLL_DELTA, ZOOM_FACTOR},
     Error, TerminalEmbedder,
 };
 use crossterm::event::{
@@ -32,6 +32,17 @@ impl TerminalEmbedder {
                     self.reset_viewport()?;
                     return Ok(true);
                 }
+                if modifiers == KeyModifiers::ALT
+                    && (code == KeyCode::Char('1') || code == KeyCode::Char('2'))
+                {
+                    self.scale = if code == KeyCode::Char('2') {
+                        self.scale * ZOOM_FACTOR
+                    } else {
+                        self.scale / ZOOM_FACTOR
+                    };
+
+                    return Ok(true);
+                }
 
                 // TODO(jiahaog): Implement keyboard support.
                 Ok(true)
@@ -61,6 +72,8 @@ impl TerminalEmbedder {
                                 self.prev_window_offset.0 - delta.0,
                                 self.prev_window_offset.1 - delta.1,
                             );
+
+                            self.engine.schedule_frame()?;
                         }
                         MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
                             self.zoom = if kind == MouseEventKind::ScrollUp {
@@ -69,14 +82,10 @@ impl TerminalEmbedder {
                                 self.zoom / ZOOM_FACTOR
                             };
 
-                            // TODO(jiahaog): Zoom towards the cursor instead of the top left.
-                            self.engine.send_window_metrics_event(
-                                (
-                                    (self.dimensions.0 as f64 * self.zoom).round() as usize,
-                                    (self.dimensions.1 as f64 * self.zoom).round() as usize,
-                                ),
-                                PIXEL_RATIO * self.zoom,
-                            )?;
+                            self.engine.schedule_frame()?;
+
+                            // TODO(jiahaog): Zoom towards the cursor instead of
+                            // the top left.
                         }
                         _ => (),
                     }
@@ -139,8 +148,7 @@ impl TerminalEmbedder {
             crossterm::event::Event::Paste(_) => todo!(),
             crossterm::event::Event::Resize(columns, rows) => {
                 self.dimensions = (columns as usize, rows as usize);
-                self.engine
-                    .send_window_metrics_event((columns as usize, rows as usize), PIXEL_RATIO)?;
+                self.engine.schedule_frame()?;
                 Ok(true)
             }
         }
