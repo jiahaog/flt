@@ -135,7 +135,6 @@ impl TerminalWindow {
             .collect();
 
         let (terminal_width, terminal_height) = self.size();
-        let terminal_height = to_external_height(terminal_height);
 
         let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..terminal_height)
             .map(|y| {
