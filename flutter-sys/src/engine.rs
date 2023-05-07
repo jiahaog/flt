@@ -227,22 +227,34 @@ extern "C" fn software_surface_present_callback(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    // In allocation, each group of 4 bits represents a pixel. In order, each of
-    // the 4 bits will be [b, g, r, a].
+    // In allocation, each group of 4 bits represents a pixel.
     let buffer = allocation
         .chunks(4)
         .into_iter()
         .map(|c| {
-            let b = c[0];
-            let g = c[1];
-            let r = c[2];
-            let a = c[3];
+            // The order of what each bit represents seems to be platform specific (at least
+            // experimentally).
+            if cfg!(target_os = "macos") {
+                let r = c[0];
+                let g = c[1];
+                let b = c[2];
+                let a = c[3];
 
-            Pixel { r, g, b, a }
+                Pixel { r, g, b, a }
+            } else {
+                let b = c[0];
+                let g = c[1];
+                let r = c[2];
+                let a = c[3];
+
+                Pixel { r, g, b, a }
+            }
         })
         .collect::<Vec<Pixel>>();
 
     /*
+      Is there a easier way to reason about why `width = row_bytes / 4`?
+
       bytes / row = row_bytes
       elements / byte = 1
 
