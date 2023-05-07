@@ -7,6 +7,7 @@ use std::{
 };
 
 use clap::{ArgGroup, Parser, ValueEnum};
+use fs_extra::dir::{self, CopyOptions};
 
 /// A CLI for `flt` to make local development easier.
 ///
@@ -23,7 +24,8 @@ struct Args {
     /// Path to the Flutter project.
     ///
     /// Defaults to `../sample_app`. If it is `-`, stdin will be intepreted as a
-    /// Dart source file and hosted within the `./host_app` project.
+    /// Dart source file and hosted within a temporary app created from the
+    /// `../host_app` template.
     flutter_project_path: Option<String>,
 
     // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
@@ -55,7 +57,7 @@ struct Args {
     #[clap(long)]
     local_engine_out_path: Option<String>,
 
-    // TOOD(jiahaog): Find a way to pass this with -- instead.
+    // TODO(jiahaog): Find a way to pass this with -- instead.
     /// Arguments that will be passed to `flt`.
     ///
     /// Pass --args=--help to see options.
@@ -208,7 +210,24 @@ impl Context {
                         .map(|line| line.unwrap())
                         .collect::<Vec<String>>()
                         .join("\n");
-                    let host_app = monorepo_root.join("flt-cli").join("host_app");
+
+                    let host_app_template = monorepo_root.join("flt-cli").join("host_app");
+
+                    let host_app = Path::new(&std::env::temp_dir())
+                        .join("flt")
+                        .join(&std::env::var("USER").unwrap())
+                        .join("host_app");
+                    if !host_app.exists() {
+                        fs::create_dir_all(host_app.clone()).unwrap();
+
+                        dir::copy(
+                            host_app_template,
+                            host_app.clone().parent().unwrap(),
+                            &CopyOptions::new(),
+                        )
+                        .unwrap();
+                    }
+
                     let main_dart = host_app.join("lib").join("main.dart");
                     fs::write(main_dart, file).unwrap();
                     host_app

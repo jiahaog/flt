@@ -8,3 +8,4 @@ default-run = "flt-cli"
 
 [dependencies]
 clap = { version = "4.2.1", features = ["derive"] }
+fs_extra = "1.3.0"
