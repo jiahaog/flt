@@ -18,6 +18,16 @@ struct Args {
     /// `/tmp/flt-semantics.txt` whenever it is updated.
     #[arg(long)]
     debug_semantics: bool,
+
+    /// When the alternate screen is used (default), the Flutter app will be
+    /// drawn to a separate buffer, and the currrent terminal buffer will be
+    /// restored when this process exits.
+    ///
+    /// Disabling the alternate screen is helpful for debugging, since
+    /// everything from the process will be logged to this alternate buffer
+    /// which will be lost.
+    #[arg(long)]
+    no_alt_screen: bool,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -27,6 +37,7 @@ fn main() -> Result<(), flt::Error> {
         &args.assets_dir,
         &args.icu_data_path,
         args.simple_output,
+        !args.no_alt_screen,
         args.debug_semantics,
     )?;
 

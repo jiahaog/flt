@@ -53,7 +53,7 @@ impl TerminalEmbedder {
                     }
                     PlatformEvent::EngineEvent(EngineEvent::LogMessage { tag, message }) => {
                         // TODO(jiahaog): Print to the main terminal.
-                        println!("{tag}: {message}");
+                        self.terminal_window.log(format!("{tag}: {message}"));
                     }
                     PlatformEvent::TerminalEvent(event) => {
                         self.handle_terminal_event(event)?;

@@ -6,24 +6,29 @@ use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
+    self, disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
 
+/// Lines to reserve the terminal for logging.
+const LOGGING_WINDOW_HEIGHT: usize = 4;
+
 pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
+    logs: VecDeque<String>,
     // Coordinates of semantics is represented in the "external" height.
     // See [to_external_height].
     semantics: HashMap<(usize, usize), String>,
     simple_output: bool,
+    alternate_screen: bool,
 }
 
 impl Drop for TerminalWindow {
@@ -31,19 +36,34 @@ impl Drop for TerminalWindow {
         if !self.simple_output {
             self.stdout.execute(DisableMouseCapture).unwrap();
             disable_raw_mode().unwrap();
+
+            // Show cursor.
             self.stdout.execute(Show).unwrap();
-            self.stdout.execute(LeaveAlternateScreen).unwrap();
+
+            if self.alternate_screen {
+                self.stdout.execute(LeaveAlternateScreen).unwrap();
+            }
+            // Add a newline char so any other subsequent logs appear on the next line.
+            self.stdout.execute(Print("\n")).unwrap();
         }
     }
 }
 
 impl TerminalWindow {
-    pub(crate) fn new(simple_output: bool, event_sender: Sender<PlatformEvent>) -> Self {
+    pub(crate) fn new(
+        simple_output: bool,
+        alternate_screen: bool,
+        event_sender: Sender<PlatformEvent>,
+    ) -> Self {
         let mut stdout = stdout();
 
         if !simple_output {
-            // This causes the terminal to be output on an alternate buffer.
-            stdout.execute(EnterAlternateScreen).unwrap();
+            if alternate_screen {
+                // This causes the terminal to be output on an alternate buffer.
+                stdout.execute(EnterAlternateScreen).unwrap();
+            }
+
+            // Hide cursor.
             stdout.execute(Hide).unwrap();
 
             enable_raw_mode().unwrap();
@@ -64,22 +84,26 @@ impl TerminalWindow {
         Self {
             stdout,
             lines: vec![],
+            logs: VecDeque::new(),
             semantics: HashMap::new(),
             simple_output,
+            alternate_screen,
         }
     }
 
     pub(crate) fn size(&self) -> (usize, usize) {
-        let (width, height) = size().unwrap();
-        (width as usize, to_external_height(height) as usize)
+        let (width, height) = terminal::size().unwrap();
+        let (width, height) = (width as usize, height as usize);
+
+        // Space for the logging window.
+        let height = height - LOGGING_WINDOW_HEIGHT;
+
+        (width, to_external_height(height))
     }
 
     pub(crate) fn update_semantics(&mut self, label_positions: Vec<((usize, usize), String)>) {
         // TODO(jiahaog): This is slow.
-        self.semantics = label_positions
-            .into_iter()
-            // .map(|((x, y), label)| ((x, to_internal_height(y)), label))
-            .collect();
+        self.semantics = label_positions.into_iter().collect();
     }
 
     pub(crate) fn draw(
@@ -225,11 +249,32 @@ impl TerminalWindow {
             }
         }
 
-        self.stdout.flush()?;
+        {
+            assert!(self.logs.len() <= LOGGING_WINDOW_HEIGHT);
 
+            let (_, height) = terminal::size()?;
+            let log_window_start = height as usize - LOGGING_WINDOW_HEIGHT;
+
+            for (i, line) in self.logs.iter().enumerate() {
+                self.stdout
+                    .queue(MoveTo(0, log_window_start as u16 + i as u16))?;
+                self.stdout
+                    .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
+                self.stdout.queue(Print(line))?;
+            }
+        }
+
+        self.stdout.flush()?;
         self.lines = lines;
 
         Ok(())
+    }
+
+    pub(crate) fn log(&mut self, message: String) {
+        if self.logs.len() == LOGGING_WINDOW_HEIGHT {
+            self.logs.pop_front();
+        }
+        self.logs.push_back(message);
     }
 }
 
@@ -261,7 +306,10 @@ fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
 
 fn normalize_event_height(event: Event) -> Event {
     match event {
-        Event::Resize(columns, rows) => Event::Resize(columns, to_external_height(rows)),
+        Event::Resize(columns, rows) => {
+            let rows = rows - LOGGING_WINDOW_HEIGHT as u16;
+            Event::Resize(columns, to_external_height(rows))
+        }
         Event::Mouse(mut mouse_event) => {
             mouse_event.row = to_external_height(mouse_event.row);
             Event::Mouse(mouse_event)

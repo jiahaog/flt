@@ -52,9 +52,9 @@ struct Args {
     // TOOD(jiahaog): Find a way to pass this with -- instead.
     /// Arguments that will be passed to `flt`.
     ///
-    /// Pass --flt_args=--help to see options.
+    /// Pass --args=--help to see options.
     #[clap(long)]
-    flt_args: Vec<String>,
+    args: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -74,7 +74,7 @@ fn main() {
         monorepo_root.to_path_buf(),
         args.flutter_project_path,
         args.local_engine_out_path,
-        args.flt_args,
+        args.args,
     );
 
     match (args.lldb, args.asan, args.clean) {

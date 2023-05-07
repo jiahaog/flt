@@ -1,3 +1,4 @@
+// TODO(jiahaog): Not sure if this works, setting it to 1 still looks fast.
 pub(crate) const FPS: usize = 60;
 
 pub(crate) const DEFAULT_PIXEL_RATIO: f64 = 0.5;

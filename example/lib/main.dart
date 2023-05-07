@@ -39,7 +39,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       /// [AnimationController]s can be created with `vsync: this` because of
       /// [TickerProviderStateMixin].
       vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 1),
     )..addListener(() {
         setState(() {});
       });
@@ -53,6 +53,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     setState(() {
       _counter++;
     });
+
+    print("counter $_counter");
   }
 
   @override

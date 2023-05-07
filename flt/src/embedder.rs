@@ -37,11 +37,13 @@ impl TerminalEmbedder {
         assets_dir: &str,
         icu_data_path: &str,
         simple_output: bool,
+        alternate_screen: bool,
         debug_semantics: bool,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
 
-        let terminal_window = TerminalWindow::new(simple_output, main_sender.clone());
+        let terminal_window =
+            TerminalWindow::new(simple_output, alternate_screen, main_sender.clone());
 
         let callbacks = {
             let (sender_a, sender_b, sender_c, sender_d) = (
