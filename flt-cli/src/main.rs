@@ -82,6 +82,8 @@ fn main() {
         args.args,
     );
 
+    context.check_submodule();
+
     match (args.lldb, args.asan, args.clean) {
         // lldb.
         (true, _, _) => {
@@ -281,6 +283,21 @@ impl Context {
             .unwrap();
 
             libflutter_engine.path().parent().unwrap().to_path_buf()
+        }
+    }
+
+    fn check_submodule(&self) {
+        let output = Command::new("git")
+            .current_dir(self.monorepo_root.clone())
+            .arg("submodule")
+            .arg("status")
+            .output()
+            .unwrap();
+
+        for line in String::from_utf8(output.stdout).unwrap().split("\n") {
+            if line.starts_with('-') {
+                panic!("Submodules in the repository were not initialized. Run the following and try again:\n$ git submodule update --init");
+            }
         }
     }
 }
