@@ -10,8 +10,8 @@ use clap::{ArgGroup, Parser, ValueEnum};
 
 /// A CLI for `flt` to make local development easier.
 ///
-/// By default, it builds and runs the example Flutter project, and then builds
-/// and starts the `flt` embedder with those Flutter artifacts.
+/// It builds the app specified by `flutter_project_path`, and then builds and
+/// starts the `flt` embedder using outputs from the previous build.
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 #[clap(group(
@@ -21,13 +21,15 @@ use clap::{ArgGroup, Parser, ValueEnum};
         ))]
 struct Args {
     /// Path to the Flutter project.
+    ///
+    /// Defaults to `../sample_app`.
     flutter_project_path: Option<String>,
 
     // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
     /// Build the embedder in release mode, with optimizations.
     ///
-    /// This will default to true as well if this binary is built in the
-    /// release configuration for convenience.
+    /// For convenience, this will default to if this binary is built in the
+    /// release configuration.
     ///
     /// The build mode for the Flutter project will always be "debug mode".
     #[clap(long, default_value_t = cfg!(not(debug_assertions)))]
@@ -196,7 +198,7 @@ impl Context {
             .join("flutter");
 
         let flutter_project_path = flutter_project_path
-            .map_or(monorepo_root.join("example"), |path_str| {
+            .map_or(monorepo_root.join("sample_app"), |path_str| {
                 Path::new(&path_str).to_path_buf()
             });
 
