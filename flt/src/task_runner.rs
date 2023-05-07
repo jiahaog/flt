@@ -15,8 +15,8 @@ impl TaskRunner {
 
     pub(crate) fn run_expired_tasks(&mut self, engine: &FlutterEngine) -> Result<(), Error> {
         let mut not_run_tasks = vec![];
-        // TODO(jiahaog): The nightly drain_filter will help here.
-        // TODO(jiahaog): Or just use a priority queue.
+        // TODO(jiahaog): Use nightly drain_filter.
+        // TODO(jiahaog): This is slow, consider a priority queue.
         for task in self.tasks.drain(..) {
             if task.can_run_now() {
                 task.run(engine)?;
@@ -25,10 +25,7 @@ impl TaskRunner {
             }
         }
 
-        for task in not_run_tasks {
-            self.tasks.push(task);
-        }
-
+        self.tasks = not_run_tasks;
         Ok(())
     }
 }
