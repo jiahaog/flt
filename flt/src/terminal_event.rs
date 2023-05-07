@@ -8,8 +8,7 @@ use crossterm::event::{
 use flutter_sys::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 
 impl TerminalEmbedder {
-    /// Returns whether the process should terminate.
-    pub(crate) fn handle_terminal_event(&mut self, event: Event) -> Result<bool, Error> {
+    pub(crate) fn handle_terminal_event(&mut self, event: Event) -> Result<(), Error> {
         match event {
             crossterm::event::Event::FocusGained => todo!(),
             crossterm::event::Event::FocusLost => todo!(),
@@ -17,7 +16,8 @@ impl TerminalEmbedder {
                 code, modifiers, ..
             }) => {
                 if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('c') {
-                    return Ok(false);
+                    self.should_run = false;
+                    return Ok(());
                 }
                 if modifiers == KeyModifiers::ALT && code == KeyCode::Char('s') {
                     self.show_semantics = !self.show_semantics;
@@ -26,11 +26,11 @@ impl TerminalEmbedder {
                         self.terminal_window.update_semantics(vec![]);
                     }
                     self.engine.update_semantics(self.show_semantics)?;
-                    return Ok(true);
+                    return Ok(());
                 }
                 if modifiers == KeyModifiers::ALT && code == KeyCode::Char('r') {
                     self.reset_viewport()?;
-                    return Ok(true);
+                    return Ok(());
                 }
                 if modifiers == KeyModifiers::ALT
                     && (code == KeyCode::Char('1') || code == KeyCode::Char('2'))
@@ -41,11 +41,11 @@ impl TerminalEmbedder {
                         self.scale / ZOOM_FACTOR
                     };
 
-                    return Ok(true);
+                    return Ok(());
                 }
 
                 // TODO(jiahaog): Implement keyboard support.
-                Ok(true)
+                Ok(())
             }
             crossterm::event::Event::Mouse(MouseEvent {
                 kind,
@@ -143,13 +143,13 @@ impl TerminalEmbedder {
                         }
                     }
                 }
-                Ok(true)
+                Ok(())
             }
             crossterm::event::Event::Paste(_) => todo!(),
             crossterm::event::Event::Resize(columns, rows) => {
                 self.dimensions = (columns as usize, rows as usize);
                 self.engine.schedule_frame()?;
-                Ok(true)
+                Ok(())
             }
         }
     }

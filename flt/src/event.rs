@@ -20,10 +20,8 @@ pub(crate) enum EngineEvent {
 
 impl TerminalEmbedder {
     pub fn run_event_loop(&mut self) -> Result<(), Error> {
-        let mut should_run = true;
-
         // TODO(jiahaog): Consider async Rust or Tokio instead.
-        while should_run {
+        while self.should_run {
             if let Ok(platform_task) = self.platform_events.recv() {
                 match platform_task {
                     PlatformEvent::EngineEvent(EngineEvent::UpdateSemantics(updates)) => {
@@ -58,7 +56,7 @@ impl TerminalEmbedder {
                         println!("{tag}: {message}");
                     }
                     PlatformEvent::TerminalEvent(event) => {
-                        should_run = self.handle_terminal_event(event)?;
+                        self.handle_terminal_event(event)?;
                     }
                 };
             }

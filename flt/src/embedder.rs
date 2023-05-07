@@ -10,13 +10,20 @@ use std::thread;
 
 pub struct TerminalEmbedder {
     pub(crate) engine: FlutterEngine,
-    pub(crate) platform_events: Receiver<PlatformEvent>,
     pub(crate) semantics_tree: FlutterSemanticsTree,
     pub(crate) terminal_window: TerminalWindow,
-    pub(crate) platform_task_runner: TaskRunner,
+
+    // Switches provided at startup.
     // TODO(jiahaog): This should be a path instead.
     pub(crate) debug_semantics: bool,
     pub(crate) show_semantics: bool,
+
+    // Event related.
+    pub(crate) should_run: bool,
+    pub(crate) platform_events: Receiver<PlatformEvent>,
+    pub(crate) platform_task_runner: TaskRunner,
+
+    // Window related.
     pub(crate) dimensions: (usize, usize),
     pub(crate) zoom: f64,
     pub(crate) scale: f64,
@@ -80,12 +87,13 @@ impl TerminalEmbedder {
 
         let mut embedder = Self {
             engine: FlutterEngine::new(assets_dir, icu_data_path, callbacks)?,
-            platform_events: main_receiver,
             terminal_window,
             semantics_tree: FlutterSemanticsTree::new(),
-            platform_task_runner: TaskRunner::new(),
             debug_semantics,
             show_semantics: false,
+            should_run: true,
+            platform_events: main_receiver,
+            platform_task_runner: TaskRunner::new(),
             dimensions: (0, 0),
             zoom: 1.0,
             scale: 1.0,
