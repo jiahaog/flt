@@ -1,4 +1,7 @@
+use crate::{constants::DEFAULT_PIXEL_RATIO, Error, TerminalEmbedder};
 use flutter_sys::{EngineTask, Pixel, SemanticsUpdate};
+use std::fs::File;
+use std::io::Write;
 
 /// Events that should be handled on the platform (main) thread.
 #[derive(Debug)]
@@ -13,4 +16,58 @@ pub(crate) enum EngineEvent {
     Draw(Vec<Vec<Pixel>>),
     EngineTask(EngineTask),
     LogMessage { tag: String, message: String },
+}
+
+impl TerminalEmbedder {
+    pub fn run_event_loop(&mut self) -> Result<(), Error> {
+        let mut should_run = true;
+
+        // TODO(jiahaog): Consider async Rust or Tokio instead.
+        while should_run {
+            if let Ok(platform_task) = self.platform_events.recv() {
+                match platform_task {
+                    PlatformEvent::EngineEvent(EngineEvent::UpdateSemantics(updates)) => {
+                        self.semantics_tree.update(updates);
+
+                        self.terminal_window
+                            .update_semantics(self.semantics_tree.as_label_positions());
+
+                        if self.debug_semantics {
+                            let mut f = File::create("/tmp/flt-semantics.txt").unwrap();
+                            writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
+                        }
+                    }
+                    PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)) => {
+                        // Not sure if doing this on every frame is ok, hoping that the engine has
+                        // some mechanism to make this a no-op if the parameters are unchanged.
+                        self.engine.send_window_metrics_event(
+                            (
+                                (self.dimensions.0 as f64 * self.zoom).round() as usize,
+                                (self.dimensions.1 as f64 * self.zoom).round() as usize,
+                            ),
+                            DEFAULT_PIXEL_RATIO * self.zoom * self.scale,
+                        )?;
+
+                        self.terminal_window.draw(pixel_grid, self.window_offset)?;
+                    }
+                    PlatformEvent::EngineEvent(EngineEvent::EngineTask(engine_task)) => {
+                        self.platform_task_runner.post_task(engine_task);
+                    }
+                    PlatformEvent::EngineEvent(EngineEvent::LogMessage { tag, message }) => {
+                        // TODO(jiahaog): Print to the main terminal.
+                        println!("{tag}: {message}");
+                    }
+                    PlatformEvent::TerminalEvent(event) => {
+                        should_run = self.handle_terminal_event(event)?;
+                    }
+                };
+            }
+
+            // TODO(jiahaog): Doing it like this probably makes us only able to run expired
+            // tasks when a platform event is received.
+            self.platform_task_runner.run_expired_tasks(&self.engine)?;
+        }
+
+        Ok(())
+    }
 }
