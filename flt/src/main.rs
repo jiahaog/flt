@@ -28,6 +28,13 @@ struct Args {
     /// which will be lost.
     #[arg(long)]
     no_alt_screen: bool,
+
+    /// When enabled, logs terminal events.
+    ///
+    /// Useful for debugging platform-specific / terminal emulator-specific
+    /// issues.
+    #[arg(long)]
+    log_terminal_events: bool,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -38,6 +45,7 @@ fn main() -> Result<(), flt::Error> {
         &args.icu_data_path,
         args.simple_output,
         !args.no_alt_screen,
+        args.log_terminal_events,
         args.debug_semantics,
     )?;
 

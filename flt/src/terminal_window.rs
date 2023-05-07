@@ -27,8 +27,11 @@ pub struct TerminalWindow {
     // Coordinates of semantics is represented in the "external" height.
     // See [to_external_height].
     semantics: HashMap<(usize, usize), String>,
+
+    // Switches for debugging.
     simple_output: bool,
     alternate_screen: bool,
+    pub(crate) log_events: bool,
 }
 
 impl Drop for TerminalWindow {
@@ -53,6 +56,7 @@ impl TerminalWindow {
     pub(crate) fn new(
         simple_output: bool,
         alternate_screen: bool,
+        log_events: bool,
         event_sender: Sender<PlatformEvent>,
     ) -> Self {
         let mut stdout = stdout();
@@ -88,6 +92,7 @@ impl TerminalWindow {
             semantics: HashMap::new(),
             simple_output,
             alternate_screen,
+            log_events,
         }
     }
 

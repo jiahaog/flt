@@ -8,21 +8,25 @@ use crossterm::event::{
 use flutter_sys::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 
 /// Modifier to intercept events which will not be forwarded to Flutter.
-const INTERCEPT_MODIFIER: KeyModifiers = KeyModifiers::CONTROL;
+const CONTROL_KEY: KeyModifiers = KeyModifiers::CONTROL;
 
 impl TerminalEmbedder {
     pub(crate) fn handle_terminal_event(&mut self, event: Event) -> Result<(), Error> {
+        if self.terminal_window.log_events {
+            self.terminal_window.log(format!("event: {:?}", event));
+        }
+
         match event {
             crossterm::event::Event::FocusGained => todo!(),
             crossterm::event::Event::FocusLost => todo!(),
             crossterm::event::Event::Key(KeyEvent {
                 code, modifiers, ..
             }) => {
-                if modifiers == INTERCEPT_MODIFIER && code == KeyCode::Char('c') {
+                if modifiers == CONTROL_KEY && code == KeyCode::Char('c') {
                     self.should_run = false;
                     return Ok(());
                 }
-                if modifiers == INTERCEPT_MODIFIER && code == KeyCode::Char('z') {
+                if modifiers == CONTROL_KEY && code == KeyCode::Char('z') {
                     self.show_semantics = !self.show_semantics;
                     // Flutter does not update the semantics callback when they are disabled.
                     if !self.show_semantics {
@@ -31,11 +35,11 @@ impl TerminalEmbedder {
                     self.engine.update_semantics(self.show_semantics)?;
                     return Ok(());
                 }
-                if modifiers == INTERCEPT_MODIFIER && code == KeyCode::Char('r') {
+                if modifiers == CONTROL_KEY && code == KeyCode::Char('r') {
                     self.reset_viewport()?;
                     return Ok(());
                 }
-                if modifiers == INTERCEPT_MODIFIER
+                if modifiers == CONTROL_KEY
                     && (code == KeyCode::Char('w') || code == KeyCode::Char('s'))
                 {
                     self.scale = if code == KeyCode::Char('w') {
@@ -56,7 +60,7 @@ impl TerminalEmbedder {
                 row,
                 modifiers,
             }) => {
-                if modifiers == INTERCEPT_MODIFIER {
+                if modifiers == CONTROL_KEY {
                     match kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             self.mouse_down_pos = (column as isize, row as isize);
