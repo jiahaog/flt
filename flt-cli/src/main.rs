@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::{self, DirEntry},
-    io,
+    io::{self, stdin},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -22,7 +22,8 @@ use clap::{ArgGroup, Parser, ValueEnum};
 struct Args {
     /// Path to the Flutter project.
     ///
-    /// Defaults to `../sample_app`.
+    /// Defaults to `../sample_app`. If it is `-`, stdin will be intepreted as a
+    /// Dart source file and hosted within the `./host_app` project.
     flutter_project_path: Option<String>,
 
     // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
@@ -72,7 +73,6 @@ enum Mode {
 
 fn main() {
     let args = Args::parse();
-
     let monorepo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
 
     let context = Context::new(
@@ -197,9 +197,22 @@ impl Context {
             .join("bin")
             .join("flutter");
 
-        let flutter_project_path = flutter_project_path
-            .map_or(monorepo_root.join("sample_app"), |path_str| {
-                Path::new(&path_str).to_path_buf()
+        let flutter_project_path =
+            flutter_project_path.map_or(monorepo_root.join("sample_app"), |path_str| {
+                if path_str == "-" {
+                    let stdin = stdin();
+                    let file = stdin
+                        .lines()
+                        .map(|line| line.unwrap())
+                        .collect::<Vec<String>>()
+                        .join("\n");
+                    let host_app = monorepo_root.join("flt-cli").join("host_app");
+                    let main_dart = host_app.join("lib").join("main.dart");
+                    fs::write(main_dart, file).unwrap();
+                    host_app
+                } else {
+                    Path::new(&path_str).to_path_buf()
+                }
             });
 
         let flutter_project_assets_dir = flutter_project_path.join("build").join("flutter_assets");
