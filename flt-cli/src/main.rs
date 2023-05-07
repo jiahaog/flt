@@ -24,10 +24,13 @@ struct Args {
     flutter_project_path: Option<String>,
 
     // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
-    /// Build artifacts in release mode, with optimizations.
+    /// Build the embedder in release mode, with optimizations.
+    ///
+    /// This will default to true as well if this binary is built in the
+    /// release configuration for convenience.
     ///
     /// The build mode for the Flutter project will always be "debug mode".
-    #[clap(long)]
+    #[clap(long, default_value_t = cfg!(not(debug_assertions)))]
     release: bool,
 
     /// Run with the lldb debugger attached and primed. Requires rust-lldb.
