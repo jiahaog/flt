@@ -6,13 +6,13 @@ use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
-    self, disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
+    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
 use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
 use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Stdout, Write};
-use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -23,7 +23,9 @@ const LOGGING_WINDOW_HEIGHT: usize = 4;
 
 pub struct TerminalWindow {
     stdout: Stdout,
-    lines: Vec<Vec<TerminalCell>>,
+    // Tuple represents the (top, bottom).
+    prev_drawn: Vec<Vec<Option<(Pixel, Pixel)>>>,
+    prev_drawn_semantics: HashMap<(usize, usize), String>,
     logs: VecDeque<String>,
     // Coordinates of semantics is represented in the "external" height.
     // See [to_external_height].
@@ -88,7 +90,8 @@ impl TerminalWindow {
 
         Self {
             stdout,
-            lines: vec![],
+            prev_drawn: vec![],
+            prev_drawn_semantics: HashMap::new(),
             logs: VecDeque::new(),
             semantics: HashMap::new(),
             simple_output,
@@ -130,150 +133,85 @@ impl TerminalWindow {
             pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
         }
 
-        let grid_with_semantics: Vec<Vec<(Pixel, Option<String>)>> = pixel_grid
-            .into_iter()
-            .enumerate()
-            .map(|(y, row)| {
-                row.into_iter()
-                    .enumerate()
-                    .map(|(x, pixel)| (pixel, self.semantics.get(&(x, y)).cloned()))
-                    .collect()
-            })
-            .collect();
+        let (width, height) = self.size();
+        // Internal height
+        let height = height / 2;
 
-        let (terminal_width, terminal_height) = self.size();
+        let mut current: Vec<Vec<Option<(Pixel, Pixel)>>> = vec![];
+        let mut current_semantics = HashMap::new();
 
-        let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..terminal_height)
-            .map(|y| {
-                let y = y_offset + y as isize;
-                if y < 0 || y >= grid_with_semantics.len() as isize {
-                    return vec![(Pixel::zero(), None); terminal_width];
+        for term_y in 0..height {
+            current.push(vec![]);
+
+            let pixel_y = (y_offset + term_y as isize) * 2;
+            if pixel_y < 0 || pixel_y as usize >= pixel_grid.len() {
+                self.stdout.queue(MoveTo(0, term_y as u16))?;
+                self.stdout.queue(Clear(ClearType::CurrentLine))?;
+                current.last_mut().unwrap().push(None);
+                continue;
+            }
+            let pixel_y = pixel_y as usize;
+
+            let current_row = current.last_mut().unwrap();
+
+            for term_x in 0..width {
+                let pixel_x = x_offset + term_x as isize;
+
+                if pixel_x < 0 || pixel_x as usize >= pixel_grid[pixel_y].len() {
+                    self.stdout.queue(MoveTo(term_x as u16, term_y as u16))?;
+                    self.stdout.queue(Print(" "))?;
+                    current_row.push(None);
+                    continue;
+                }
+                let pixel_x = pixel_x as usize;
+
+                self.stdout.queue(MoveTo(term_x as u16, term_y as u16))?;
+
+                let top_pixel = pixel_grid[pixel_y][pixel_x];
+                let bottom_pixel = pixel_grid[pixel_y + 1][pixel_x];
+                current_row.push(Some((top_pixel, bottom_pixel)));
+
+                let block = BLOCK_UPPER
+                    .with(to_color(&top_pixel))
+                    .on(to_color(&bottom_pixel));
+
+                // TODO(jiahaog): Skipping the optimizations when semantics are enabled is horribly slow.
+                if self.semantics.len() == 0
+                    && term_y < self.prev_drawn.len()
+                    && term_x < self.prev_drawn[term_y].len()
+                {
+                    let prev = self.prev_drawn[term_y][term_x];
+                    if prev.is_some() && prev.unwrap() == (top_pixel, bottom_pixel) {
+                        continue;
+                    }
                 }
 
-                let y = y as usize;
+                self.stdout.queue(PrintStyledContent(block))?;
+            }
 
-                (0..terminal_width)
-                    .map(|x| {
-                        let x = x_offset + x as isize;
+            for ((pixel_x, pixel_y), label) in self.semantics.iter() {
+                let term_x = *pixel_x as isize - x_offset;
+                // Division here actually truncates and may cause labels to be hidden if they
+                // are on consecutive rows.
+                let term_y = (*pixel_y as isize - y_offset) / 2;
 
-                        if x < 0 || x >= grid_with_semantics.first().unwrap().len() as isize {
-                            return (Pixel::zero(), None);
-                        }
-
-                        let x = x as usize;
-
-                        grid_with_semantics[y][x].clone()
-                    })
-                    .collect()
-            })
-            .collect();
-
-        assert!(grid_for_terminal.len() == terminal_height);
-        assert!(grid_for_terminal.first().unwrap().len() == terminal_width);
-
-        // Each element is one pixel, but when it is rendered to the terminal,
-        // two rows share one character, using the unicode BLOCK characters.
-        let lines = (0..grid_for_terminal.len())
-            .step_by(2)
-            .map(|y| {
-                // TODO(jiahaog): Avoid the borrow here.
-                let tops = &grid_for_terminal[y];
-                let bottoms = &grid_for_terminal[y + 1];
-
-                zip(tops, bottoms)
-                    .map(
-                        |((top_pixel, top_semantics), (bottom_pixel, bottom_semantics))| {
-                            // Find the semantic labels for the current cell.
-                            let semantics = match (top_semantics, bottom_semantics) {
-                                (None, None) => None,
-                                (None, right) => right.clone(),
-                                (left, None) => left.clone(),
-                                // Use the longest.
-                                (Some(left), Some(right)) => Some(if left.len() > right.len() {
-                                    left.clone()
-                                } else {
-                                    right.clone()
-                                }),
-                            };
-
-                            TerminalCell {
-                                top: to_color(&top_pixel),
-                                bottom: to_color(&bottom_pixel),
-                                semantics,
-                            }
-                        },
-                    )
-                    .collect::<Vec<TerminalCell>>()
-            })
-            .collect::<Vec<Vec<TerminalCell>>>();
-
-        // Refreshing the entire terminal (with the clear char) and outputting
-        // everything on every iteration is costly and causes the terminal to
-        // flicker.
-        //
-        // Instead, only "re-render" the current line, if it is different from
-        // the previous frame.
-
-        // Means that the screen dimensions has changed.
-        if self.lines.len() != lines.len() {
-            // Use empty values so the diffing check below always fail.
-            self.lines = vec![vec![]; lines.len()];
-        }
-
-        for (y, (prev, current)) in zip(&self.lines, &lines).enumerate() {
-            for (
-                x,
-                current_cell @ TerminalCell {
-                    top,
-                    bottom,
-                    semantics: _,
-                },
-            ) in current.into_iter().enumerate()
-            {
-                if prev
-                    .get(x)
-                    .filter(|prev_cell| prev_cell == &current_cell)
-                    .is_some()
+                if term_x < 0 || term_x as usize >= width || term_y < 0 || term_y as usize >= height
                 {
                     continue;
                 }
-                self.stdout.queue(MoveTo(x as u16, y as u16))?;
-                self.stdout.queue(PrintStyledContent(
-                    BLOCK_UPPER.to_string().with(*top).on(*bottom),
-                ))?;
-            }
+                let term_x = term_x as usize;
+                let term_y = term_y as usize;
 
-            // Second pass to put semantics over pixels.
-            for (
-                x,
-                TerminalCell {
-                    top: _,
-                    bottom: _,
-                    semantics,
-                },
-            ) in current.into_iter().enumerate()
-            {
-                if semantics.is_none() {
-                    continue;
+                current_semantics.insert((term_x, term_y), label);
+
+                if let Some(prev_label) = self.prev_drawn_semantics.get(&(term_x, term_y)) {
+                    if prev_label == label {
+                        continue;
+                    }
                 }
-                self.stdout.queue(MoveTo(x as u16, y as u16))?;
-                // TODO(jiahaog): Reflow within bounding box, or otherwise truncate.
-                self.stdout.queue(Print(semantics.as_ref().unwrap()))?;
-            }
-        }
 
-        {
-            assert!(self.logs.len() <= LOGGING_WINDOW_HEIGHT);
-
-            let (_, height) = terminal::size()?;
-            let log_window_start = height as usize - LOGGING_WINDOW_HEIGHT;
-
-            for (i, line) in self.logs.iter().enumerate() {
-                self.stdout
-                    .queue(MoveTo(0, log_window_start as u16 + i as u16))?;
-                self.stdout
-                    .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
-                self.stdout.queue(Print(line))?;
+                self.stdout.queue(MoveTo(term_x as u16, term_y as u16))?;
+                self.stdout.queue(Print(label))?;
             }
         }
 
@@ -282,7 +220,7 @@ impl TerminalWindow {
             .queue(Print(format!("{:>3?}", prev_frame_duration.as_millis())))?;
 
         self.stdout.flush()?;
-        self.lines = lines;
+        self.prev_drawn = current;
 
         Ok(())
     }
