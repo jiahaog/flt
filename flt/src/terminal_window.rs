@@ -221,37 +221,44 @@ impl TerminalWindow {
         }
 
         for (y, (prev, current)) in zip(&self.lines, &lines).enumerate() {
-            if !do_vecs_match(prev, current) {
-                self.stdout.queue(MoveTo(0, y as u16))?;
-
-                for TerminalCell {
+            for (
+                x,
+                current_cell @ TerminalCell {
                     top,
                     bottom,
                     semantics: _,
-                } in current
+                },
+            ) in current.into_iter().enumerate()
+            {
+                if prev
+                    .get(x)
+                    .filter(|prev_cell| prev_cell == &current_cell)
+                    .is_some()
                 {
-                    self.stdout.queue(PrintStyledContent(
-                        BLOCK_UPPER.to_string().with(*top).on(*bottom),
-                    ))?;
+                    continue;
                 }
+                self.stdout.queue(MoveTo(x as u16, y as u16))?;
+                self.stdout.queue(PrintStyledContent(
+                    BLOCK_UPPER.to_string().with(*top).on(*bottom),
+                ))?;
+            }
 
-                // Second pass to put semantics over pixels.
-                for (
-                    x,
-                    TerminalCell {
-                        top: _,
-                        bottom: _,
-                        semantics,
-                    },
-                ) in current.into_iter().enumerate()
-                {
-                    if semantics.is_none() {
-                        continue;
-                    }
-                    self.stdout.queue(MoveTo(x as u16, y as u16))?;
-                    // TODO(jiahaog): Reflow within bounding box, or otherwise truncate.
-                    self.stdout.queue(Print(semantics.as_ref().unwrap()))?;
+            // Second pass to put semantics over pixels.
+            for (
+                x,
+                TerminalCell {
+                    top: _,
+                    bottom: _,
+                    semantics,
+                },
+            ) in current.into_iter().enumerate()
+            {
+                if semantics.is_none() {
+                    continue;
                 }
+                self.stdout.queue(MoveTo(x as u16, y as u16))?;
+                // TODO(jiahaog): Reflow within bounding box, or otherwise truncate.
+                self.stdout.queue(Print(semantics.as_ref().unwrap()))?;
             }
         }
 
@@ -296,11 +303,6 @@ struct TerminalCell {
     top: Color,
     bottom: Color,
     semantics: Option<String>,
-}
-
-fn do_vecs_match<T: PartialEq>(a: &[T], b: &[T]) -> bool {
-    let matching = a.iter().zip(b.iter()).filter(|&(a, b)| a == b).count();
-    matching == a.len() && matching == b.len()
 }
 
 const BLOCK_UPPER: char = '▀';
