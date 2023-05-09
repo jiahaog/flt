@@ -275,6 +275,9 @@ impl TerminalWindow {
     }
 
     pub(crate) fn log(&mut self, message: String) {
+        if self.simple_output {
+            println!("{message}");
+        }
         if self.logs.len() == LOGGING_WINDOW_HEIGHT {
             self.logs.pop_front();
         }
