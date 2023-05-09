@@ -227,31 +227,6 @@ extern "C" fn software_surface_present_callback(
     let allocation: &[u8] =
         unsafe { slice::from_raw_parts(allocation as *const u8, row_bytes * height) };
 
-    // In allocation, each group of 4 bits represents a pixel.
-    let buffer = allocation
-        .chunks(4)
-        .into_iter()
-        .map(|c| {
-            // The order of what each bit represents seems to be platform specific (at least
-            // experimentally).
-            if cfg!(target_os = "macos") {
-                let r = c[0];
-                let g = c[1];
-                let b = c[2];
-                let a = c[3];
-
-                Pixel { r, g, b, a }
-            } else {
-                let b = c[0];
-                let g = c[1];
-                let r = c[2];
-                let a = c[3];
-
-                Pixel { r, g, b, a }
-            }
-        })
-        .collect::<Vec<Pixel>>();
-
     /*
       Is there a easier way to reason about why `width = row_bytes / 4`?
 
@@ -268,18 +243,36 @@ extern "C" fn software_surface_present_callback(
     */
     let width = row_bytes / 4;
 
-    let pixel_grid = buffer
-        .into_iter()
-        .enumerate()
-        .fold(vec![], |mut acc, (i, pixel)| {
-            let x = i % width;
-            if x == 0 {
-                acc.push(vec![]);
-            }
+    // In allocation, each group of 4 bits represents a pixel.
+    let buffer = allocation.chunks(4).into_iter().map(|c| {
+        // The order of what each bit represents seems to be platform specific (at least
+        // experimentally).
+        if cfg!(target_os = "macos") {
+            let r = c[0];
+            let g = c[1];
+            let b = c[2];
+            let a = c[3];
 
-            acc.last_mut().unwrap().push(pixel);
-            acc
-        });
+            Pixel { r, g, b, a }
+        } else {
+            let b = c[0];
+            let g = c[1];
+            let r = c[2];
+            let a = c[3];
+
+            Pixel { r, g, b, a }
+        }
+    });
+
+    let pixel_grid = buffer.enumerate().fold(vec![], |mut acc, (i, pixel)| {
+        let x = i % width;
+        if x == 0 {
+            acc.push(vec![]);
+        }
+
+        acc.last_mut().unwrap().push(pixel);
+        acc
+    });
 
     user_data
         .callbacks
