@@ -16,6 +16,7 @@ use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
+use std::time::Duration;
 
 /// Lines to reserve the terminal for logging.
 const LOGGING_WINDOW_HEIGHT: usize = 4;
@@ -115,6 +116,7 @@ impl TerminalWindow {
         &mut self,
         mut pixel_grid: Vec<Vec<Pixel>>,
         (x_offset, y_offset): (isize, isize),
+        prev_frame_duration: Duration,
     ) -> Result<(), ErrorKind> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
@@ -267,6 +269,10 @@ impl TerminalWindow {
                 self.stdout.queue(Print(line))?;
             }
         }
+
+        self.stdout.queue(MoveTo(0, 0))?;
+        self.stdout
+            .queue(Print(format!("{:>3?}", prev_frame_duration.as_millis())))?;
 
         self.stdout.flush()?;
         self.lines = lines;

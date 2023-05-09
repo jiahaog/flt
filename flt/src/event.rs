@@ -2,6 +2,7 @@ use crate::{constants::DEFAULT_PIXEL_RATIO, Error, TerminalEmbedder};
 use flutter_sys::{EngineTask, Pixel, SemanticsUpdate};
 use std::fs::File;
 use std::io::Write;
+use std::time::Instant;
 
 /// Events that should be handled on the platform (main) thread.
 #[derive(Debug)]
@@ -36,6 +37,10 @@ impl TerminalEmbedder {
                         }
                     }
                     PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)) => {
+                        let current_frame_instant = Instant::now();
+                        let prev_frame_duration =
+                            current_frame_instant.duration_since(self.last_frame_instant);
+                        self.last_frame_instant = current_frame_instant;
                         // Not sure if doing this on every frame is ok, hoping that the engine has
                         // some mechanism to make this a no-op if the parameters are unchanged.
                         self.engine.send_window_metrics_event(
@@ -46,7 +51,11 @@ impl TerminalEmbedder {
                             DEFAULT_PIXEL_RATIO * self.zoom * self.scale,
                         )?;
 
-                        self.terminal_window.draw(pixel_grid, self.window_offset)?;
+                        self.terminal_window.draw(
+                            pixel_grid,
+                            self.window_offset,
+                            prev_frame_duration,
+                        )?;
                     }
                     PlatformEvent::EngineEvent(EngineEvent::EngineTask(engine_task)) => {
                         self.platform_task_runner.post_task(engine_task);
