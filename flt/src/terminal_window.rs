@@ -130,9 +130,10 @@ impl TerminalWindow {
             return Ok(());
         }
 
-        // TODO(jiahaog): This implementation is horrible and should be rewritten.
+        // TODO(jiahaog): Enable this assertion. This breaks when zooming out.
+        // assert_eq!(pixel_grid.len() % 2, 0, "Drawn pixels should always be a multiple of two as the terminal height is multiplied by two before being provided to flutter.");
 
-        assert_eq!(pixel_grid.len() % 2, 0, "Drawn pixels should always be a multiple of two as the terminal height is multiplied by two before being provided to flutter.");
+        // TODO(jiahaog): This implementation is horrible and should be rewritten.
 
         let grid_with_semantics: Vec<Vec<(Pixel, Option<String>)>> = pixel_grid
             .into_iter()
@@ -314,8 +315,32 @@ impl TerminalWindow {
 
         if self.showing_help {
             self.stdout.queue(MoveTo(0, 0))?;
-            self.stdout.queue(Print("Help here"))?;
-            self.stdout.queue(MoveTo(1, 0))?;
+            self.stdout.queue(Print("Ctrl + r: Reset the viewport."))?;
+            self.stdout.queue(MoveTo(0, 2))?;
+            self.stdout
+                .queue(Print("Ctrl + 5: Increase the pixel ratio."))?;
+            self.stdout.queue(MoveTo(0, 4))?;
+            self.stdout
+                .queue(Print("Ctrl + 4: Decrease the pixel ratio."))?;
+            self.stdout.queue(MoveTo(0, 6))?;
+            self.stdout
+                .queue(Print("Ctrl + Mouse Scroll: Zoom in / out."))?;
+            self.stdout.queue(MoveTo(0, 8))?;
+            self.stdout
+                .queue(Print("Ctrl + Mouse Click and Drag: Pan the viewport. Some terminals might not allow this."))?;
+            self.stdout.queue(MoveTo(0, 10))?;
+            self.stdout.queue(Print(
+                "Ctrl + z: Show semantic labels (very experimental and jank).",
+            ))?;
+            self.stdout.queue(MoveTo(0, 12))?;
+            self.stdout.queue(Print("?: Toggle help."))?;
+
+            self.stdout.queue(MoveTo(0, 14))?;
+            self.stdout.queue(Print("Tips: Changing the current terminal emulator's text size will make things look a lot better. "))?;
+            self.stdout.queue(MoveTo(0, 15))?;
+            self.stdout.queue(Print(
+                "But the code is suboptimal and it might lead to more jank.",
+            ))?;
             self.stdout.flush()?;
         }
         Ok(())

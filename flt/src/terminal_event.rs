@@ -22,33 +22,8 @@ impl TerminalEmbedder {
             crossterm::event::Event::Key(KeyEvent {
                 code, modifiers, ..
             }) => {
-                if modifiers == CONTROL_KEY && code == KeyCode::Char('c') {
-                    self.should_run = false;
-                    return Ok(());
-                }
-                if modifiers == CONTROL_KEY && code == KeyCode::Char('z') {
-                    self.show_semantics = !self.show_semantics;
-                    // Flutter does not update the semantics callback when they are disabled.
-                    if !self.show_semantics {
-                        self.terminal_window.update_semantics(vec![]);
-                    }
-                    self.engine.update_semantics(self.show_semantics)?;
-                    return Ok(());
-                }
-                if modifiers == CONTROL_KEY && code == KeyCode::Char('r') {
-                    self.reset_viewport()?;
-                    return Ok(());
-                }
-                if modifiers == CONTROL_KEY
-                    && (code == KeyCode::Char('w') || code == KeyCode::Char('s'))
-                {
-                    self.scale = if code == KeyCode::Char('w') {
-                        self.scale * ZOOM_FACTOR
-                    } else {
-                        self.scale / ZOOM_FACTOR
-                    };
-
-                    return Ok(());
+                if modifiers == CONTROL_KEY {
+                    return self.handle_control_char(code);
                 }
                 if code == KeyCode::Char('?') {
                     self.terminal_window.toggle_show_help()?;
@@ -163,6 +138,40 @@ impl TerminalEmbedder {
                 self.engine.schedule_frame()?;
                 Ok(())
             }
+        }
+    }
+
+    fn handle_control_char(&mut self, code: KeyCode) -> Result<(), Error> {
+        match code {
+            KeyCode::Char('c') => {
+                self.should_run = false;
+                Ok(())
+            }
+            KeyCode::Char('z') => {
+                self.show_semantics = !self.show_semantics;
+                // Flutter does not update the semantics callback when they are disabled.
+                if !self.show_semantics {
+                    self.terminal_window.update_semantics(vec![]);
+                    self.terminal_window.mark_dirty();
+                }
+                self.engine.update_semantics(self.show_semantics)?;
+                Ok(())
+            }
+            KeyCode::Char('r') => {
+                self.reset_viewport()?;
+                Ok(())
+            }
+            KeyCode::Char('5') => {
+                self.scale *= ZOOM_FACTOR;
+                self.engine.schedule_frame()?;
+                Ok(())
+            }
+            KeyCode::Char('4') => {
+                self.scale /= ZOOM_FACTOR;
+                self.engine.schedule_frame()?;
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 }
