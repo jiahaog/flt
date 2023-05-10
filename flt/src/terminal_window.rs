@@ -117,7 +117,7 @@ impl TerminalWindow {
 
     pub(crate) fn draw(
         &mut self,
-        mut pixel_grid: Vec<Vec<Pixel>>,
+        pixel_grid: Vec<Vec<Pixel>>,
         (x_offset, y_offset): (isize, isize),
         prev_frame_duration: Duration,
     ) -> Result<(), ErrorKind> {
@@ -130,12 +130,9 @@ impl TerminalWindow {
             return Ok(());
         }
 
-        let width = pixel_grid.first().map_or(0, |row| row.len());
+        // TODO(jiahaog): This implementation is horrible and should be rewritten.
 
-        // Always process an even number of rows.
-        if pixel_grid.len() % 2 != 0 {
-            pixel_grid.extend(vec![vec![Pixel::zero(); width]]);
-        }
+        assert_eq!(pixel_grid.len() % 2, 0, "Drawn pixels should always be a multiple of two as the terminal height is multiplied by two before being provided to flutter.");
 
         let grid_with_semantics: Vec<Vec<(Pixel, Option<String>)>> = pixel_grid
             .into_iter()
@@ -148,18 +145,18 @@ impl TerminalWindow {
             })
             .collect();
 
-        let (terminal_width, terminal_height) = self.size();
+        let (pixel_width, pixel_height) = self.size();
 
-        let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..terminal_height)
+        let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..pixel_height)
             .map(|y| {
                 let y = y_offset + y as isize;
                 if y < 0 || y >= grid_with_semantics.len() as isize {
-                    return vec![(Pixel::zero(), None); terminal_width];
+                    return vec![(Pixel::zero(), None); pixel_width];
                 }
 
                 let y = y as usize;
 
-                (0..terminal_width)
+                (0..pixel_width)
                     .map(|x| {
                         let x = x_offset + x as isize;
 
@@ -175,8 +172,8 @@ impl TerminalWindow {
             })
             .collect();
 
-        assert!(grid_for_terminal.len() == terminal_height);
-        assert!(grid_for_terminal.first().unwrap().len() == terminal_width);
+        assert!(grid_for_terminal.len() == pixel_height);
+        assert!(grid_for_terminal.first().unwrap().len() == pixel_width);
 
         // Each element is one pixel, but when it is rendered to the terminal,
         // two rows share one character, using the unicode BLOCK characters.
@@ -272,10 +269,10 @@ impl TerminalWindow {
         {
             assert!(self.logs.len() <= LOGGING_WINDOW_HEIGHT);
 
-            let (_, height) = terminal::size()?;
+            let (_, terminal_height) = terminal::size()?;
 
             for i in 0..LOGGING_WINDOW_HEIGHT {
-                let y = height as usize - LOGGING_WINDOW_HEIGHT + i;
+                let y = terminal_height as usize - LOGGING_WINDOW_HEIGHT + i;
 
                 self.stdout.queue(MoveTo(0, y as u16))?;
                 self.stdout
@@ -287,8 +284,8 @@ impl TerminalWindow {
 
             let hint_and_fps = format!("{HELP_HINT} [{}]", prev_frame_duration.as_millis());
             self.stdout.queue(MoveTo(
-                (terminal_width - hint_and_fps.len()) as u16,
-                (height - 1) as u16,
+                (pixel_width - hint_and_fps.len()) as u16,
+                (terminal_height - 1) as u16,
             ))?;
             self.stdout.queue(Print(hint_and_fps))?;
         }
