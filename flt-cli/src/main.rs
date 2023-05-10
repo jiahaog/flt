@@ -50,6 +50,13 @@ struct Args {
     #[clap(long)]
     clean: bool,
 
+    /// Whether to run `flutter build bundle`.
+    ///
+    /// Set this when getting snapshot or invalid argument errors, or when
+    /// building a new project.
+    #[clap(long, default_value_t = false)]
+    flutter_build: bool,
+
     /// Path to the local engine directory. Only works with --lldb.
     ///
     /// When not passed, defaults to the downloaded prebuilt that will be used
@@ -89,12 +96,14 @@ fn main() {
     match (args.lldb, args.asan, args.clean) {
         // lldb.
         (true, _, _) => {
-            assert!(context
-                .flutter_tools_command()
-                .args(vec!["build", "bundle"])
-                .status()
-                .unwrap()
-                .success());
+            if args.flutter_build {
+                assert!(context
+                    .flutter_tools_command()
+                    .args(vec!["build", "bundle"])
+                    .status()
+                    .unwrap()
+                    .success());
+            }
 
             let mut cargo_command = context.cargo_command();
             cargo_command.arg("build");
@@ -116,12 +125,14 @@ fn main() {
         }
         // Asan.
         (_, true, _) => {
-            assert!(context
-                .flutter_tools_command()
-                .args(vec!["build", "bundle"])
-                .status()
-                .unwrap()
-                .success());
+            if args.flutter_build {
+                assert!(context
+                    .flutter_tools_command()
+                    .args(vec!["build", "bundle"])
+                    .status()
+                    .unwrap()
+                    .success());
+            }
 
             let mut cargo_command = context.cargo_command();
             cargo_command
@@ -156,12 +167,14 @@ fn main() {
         }
         // Default. This needs to be last.
         (_, _, _) => {
-            assert!(context
-                .flutter_tools_command()
-                .args(vec!["build", "bundle"])
-                .status()
-                .unwrap()
-                .success());
+            if args.flutter_build {
+                assert!(context
+                    .flutter_tools_command()
+                    .args(vec!["build", "bundle"])
+                    .status()
+                    .unwrap()
+                    .success());
+            }
 
             let mut cargo_command = context.cargo_command();
             cargo_command.args(vec!["run", "--package", "flt"]);
