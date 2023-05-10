@@ -50,6 +50,10 @@ impl TerminalEmbedder {
 
                     return Ok(());
                 }
+                if code == KeyCode::Char('?') {
+                    self.terminal_window.toggle_show_help()?;
+                    return Ok(());
+                }
 
                 // TODO(jiahaog): Implement keyboard support.
                 Ok(())
@@ -155,6 +159,7 @@ impl TerminalEmbedder {
             crossterm::event::Event::Paste(_) => todo!(),
             crossterm::event::Event::Resize(columns, rows) => {
                 self.dimensions = (columns as usize, rows as usize);
+                self.terminal_window.mark_dirty();
                 self.engine.schedule_frame()?;
                 Ok(())
             }

@@ -6,7 +6,8 @@ use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
-    self, disable_raw_mode, enable_raw_mode, Clear, EnterAlternateScreen, LeaveAlternateScreen,
+    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
 use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
@@ -32,6 +33,7 @@ pub struct TerminalWindow {
     // Switches for debugging.
     simple_output: bool,
     alternate_screen: bool,
+    showing_help: bool,
     pub(crate) log_events: bool,
 }
 
@@ -92,6 +94,7 @@ impl TerminalWindow {
             logs: VecDeque::new(),
             semantics: HashMap::new(),
             simple_output,
+            showing_help: false,
             alternate_screen,
             log_events,
         }
@@ -120,6 +123,10 @@ impl TerminalWindow {
     ) -> Result<(), ErrorKind> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
+            return Ok(());
+        }
+
+        if self.showing_help {
             return Ok(());
         }
 
@@ -211,12 +218,12 @@ impl TerminalWindow {
         // everything on every iteration is costly and causes the terminal to
         // flicker.
         //
-        // Instead, only "re-render" the current line, if it is different from
+        // Instead, only "re-render" different characters, if it is different from
         // the previous frame.
 
         // Means that the screen dimensions has changed.
         if self.lines.len() != lines.len() {
-            // Use empty values so the diffing check below always fail.
+            // As the next zip needs to be a zip_longest.
             self.lines = vec![vec![]; lines.len()];
         }
 
@@ -266,20 +273,25 @@ impl TerminalWindow {
             assert!(self.logs.len() <= LOGGING_WINDOW_HEIGHT);
 
             let (_, height) = terminal::size()?;
-            let log_window_start = height as usize - LOGGING_WINDOW_HEIGHT;
 
-            for (i, line) in self.logs.iter().enumerate() {
-                self.stdout
-                    .queue(MoveTo(0, log_window_start as u16 + i as u16))?;
+            for i in 0..LOGGING_WINDOW_HEIGHT {
+                let y = height as usize - LOGGING_WINDOW_HEIGHT + i;
+
+                self.stdout.queue(MoveTo(0, y as u16))?;
                 self.stdout
                     .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
-                self.stdout.queue(Print(line))?;
+                if let Some(line) = self.logs.get(i) {
+                    self.stdout.queue(Print(line))?;
+                }
             }
-        }
 
-        self.stdout.queue(MoveTo(0, 0))?;
-        self.stdout
-            .queue(Print(format!("{:>3?}", prev_frame_duration.as_millis())))?;
+            let hint_and_fps = format!("{HELP_HINT} [{}]", prev_frame_duration.as_millis());
+            self.stdout.queue(MoveTo(
+                (terminal_width - hint_and_fps.len()) as u16,
+                (height - 1) as u16,
+            ))?;
+            self.stdout.queue(Print(hint_and_fps))?;
+        }
 
         self.stdout.flush()?;
         self.lines = lines;
@@ -295,6 +307,25 @@ impl TerminalWindow {
             self.logs.pop_front();
         }
         self.logs.push_back(message);
+    }
+
+    pub(crate) fn toggle_show_help(&mut self) -> Result<(), ErrorKind> {
+        self.showing_help = !self.showing_help;
+
+        self.stdout.execute(Clear(ClearType::All))?;
+        self.mark_dirty();
+
+        if self.showing_help {
+            self.stdout.queue(MoveTo(0, 0))?;
+            self.stdout.queue(Print("Help here"))?;
+            self.stdout.queue(MoveTo(1, 0))?;
+            self.stdout.flush()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn mark_dirty(&mut self) {
+        self.lines.clear();
     }
 }
 
@@ -340,3 +371,5 @@ fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
         b: *b,
     }
 }
+
+const HELP_HINT: &str = "? for help";

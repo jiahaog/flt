@@ -131,6 +131,7 @@ impl TerminalEmbedder {
         self.prev_window_offset = (0, 0);
         self.mouse_down_pos = (0, 0);
 
+        self.terminal_window.mark_dirty();
         self.engine.schedule_frame()?;
         Ok(())
     }
