@@ -7,7 +7,6 @@ use crate::Error;
 use flutter_sys::{Callbacks, FlutterEngine};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
-use std::time::Instant;
 
 pub struct TerminalEmbedder {
     pub(crate) engine: FlutterEngine,
@@ -108,7 +107,6 @@ impl TerminalEmbedder {
             window_offset: (0, 0),
             prev_window_offset: (0, 0),
             mouse_down_pos: (0, 0),
-            last_frame_instant: Instant::now(),
         };
 
         embedder.engine.notify_display_update(FPS as f64)?;
