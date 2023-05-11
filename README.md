@@ -6,7 +6,7 @@ This embedder draws to the current terminal window using [ANSI Escape Codes](htt
 
 ## Why?
 
-Mainly for fun to learn Rust and more about the Flutter Engine. A possible use case could be for Flutter users to start playing around with Flutter quickly as it does not require any platform-specific or GUI specific dependencies; users would only need a terminal and it can even be used over SSH.
+Mainly for fun to learn Rust and more about the Flutter Engine. It can also be a quick playground for Flutter without platform-specific or GUI specific dependencies; only a terminal is needed and it can even be used over SSH.
 
 ## Supported Platforms / Terminals
 
@@ -64,3 +64,8 @@ cargo run -- --args=--help
 - [ ] Keyboard support
 - [ ] Slow performance
 - [ ] Improve semantic label positions
+
+## References
+
+- [Forking Chrome to render in a terminal](https://fathy.fr/carbonyl)
+- [brow.sh](https://www.brow.sh/)
