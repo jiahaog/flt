@@ -31,7 +31,6 @@ pub struct TerminalEmbedder {
     pub(crate) window_offset: (isize, isize),
     pub(crate) prev_window_offset: (isize, isize),
     pub(crate) mouse_down_pos: (isize, isize),
-    pub(crate) last_frame_instant: Instant,
 }
 
 impl TerminalEmbedder {

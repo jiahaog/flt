@@ -2,7 +2,6 @@ use crate::{constants::DEFAULT_PIXEL_RATIO, Error, TerminalEmbedder};
 use flutter_sys::{EngineTask, Pixel, SemanticsUpdate};
 use std::fs::File;
 use std::io::Write;
-use std::time::Instant;
 
 /// Events that should be handled on the platform (main) thread.
 #[derive(Debug)]

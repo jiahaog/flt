@@ -17,7 +17,7 @@ use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Lines to reserve the terminal for logging.
 const LOGGING_WINDOW_HEIGHT: usize = 4;
