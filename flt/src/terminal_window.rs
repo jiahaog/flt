@@ -17,7 +17,7 @@ use std::iter::zip;
 use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Lines to reserve the terminal for logging.
 const LOGGING_WINDOW_HEIGHT: usize = 4;
@@ -119,7 +119,6 @@ impl TerminalWindow {
         &mut self,
         pixel_grid: Vec<Vec<Pixel>>,
         (x_offset, y_offset): (isize, isize),
-        prev_frame_duration: Duration,
     ) -> Result<(), ErrorKind> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
@@ -129,6 +128,8 @@ impl TerminalWindow {
         if self.showing_help {
             return Ok(());
         }
+
+        let start_instant = Instant::now();
 
         // TODO(jiahaog): Enable this assertion. This breaks when zooming out.
         // assert_eq!(pixel_grid.len() % 2, 0, "Drawn pixels should always be a multiple of two as the terminal height is multiplied by two before being provided to flutter.");
@@ -283,7 +284,9 @@ impl TerminalWindow {
                 }
             }
 
-            let hint_and_fps = format!("{HELP_HINT} [{}]", prev_frame_duration.as_millis());
+            let draw_duration = Instant::now().duration_since(start_instant);
+
+            let hint_and_fps = format!("{HELP_HINT} [{}]", draw_duration.as_millis());
             self.stdout.queue(MoveTo(
                 (pixel_width - hint_and_fps.len()) as u16,
                 (terminal_height - 1) as u16,
