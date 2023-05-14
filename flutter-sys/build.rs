@@ -89,12 +89,7 @@ fn main() {
     if cfg!(target_os = "macos") {
         // On macOS, ld will link using `-l${rustc-link-lib}` which looks for
         // `lib${rustc-link-lib}.dylib.
-        // fs::copy(
-        //     out_dir.join("FlutterEmbedder.framework").join("FlutterEmbedder"),
-        //     out_dir.join("FlutterEmbedder.framework").join("libFlutterEmbedder.dylib"),
-        // )
-        // .unwrap();
-
+        //
         // Matches `libFlutterEmbedder.dylib`.
         println!("cargo:rustc-link-lib=framework=FlutterEmbedder");
         println!(
