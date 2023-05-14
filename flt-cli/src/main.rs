@@ -54,7 +54,7 @@ struct Args {
     ///
     /// Set this when getting snapshot or invalid argument errors, or when
     /// building a new project.
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = true)]
     flutter_build: bool,
 
     /// Path to the local engine directory. Only works with --lldb.
