@@ -1,13 +1,12 @@
 use std::{
     env,
     fs::{self, DirEntry},
-    io::{self, stdin},
+    io,
     path::{Path, PathBuf},
     process::Command,
 };
 
 use clap::{ArgGroup, Parser, ValueEnum};
-use fs_extra::dir::{self, CopyOptions};
 
 /// A CLI for `flt` to make local development easier.
 ///
@@ -23,9 +22,7 @@ use fs_extra::dir::{self, CopyOptions};
 struct Args {
     /// Path to the Flutter project.
     ///
-    /// Defaults to `../sample_app`. If it is `-`, stdin will be intepreted as a
-    /// Dart source file and hosted within a temporary app created from the
-    /// `../host_app` template.
+    /// Defaults to `../sample_app`.
     flutter_project_path: Option<String>,
 
     // TODO(jiahaog): Implement support for Flutter projects in AOT mode.
@@ -214,39 +211,9 @@ impl Context {
             .join("bin")
             .join("flutter");
 
-        let flutter_project_path =
-            flutter_project_path.map_or(monorepo_root.join("sample_app"), |path_str| {
-                if path_str == "-" {
-                    let stdin = stdin();
-                    let file = stdin
-                        .lines()
-                        .map(|line| line.unwrap())
-                        .collect::<Vec<String>>()
-                        .join("\n");
-
-                    let host_app_template = monorepo_root.join("flt-cli").join("host_app");
-
-                    let host_app = Path::new(&std::env::temp_dir())
-                        .join("flt")
-                        .join(&std::env::var("USER").unwrap())
-                        .join("host_app");
-                    if !host_app.exists() {
-                        fs::create_dir_all(host_app.clone()).unwrap();
-
-                        dir::copy(
-                            host_app_template,
-                            host_app.clone().parent().unwrap(),
-                            &CopyOptions::new(),
-                        )
-                        .unwrap();
-                    }
-
-                    let main_dart = host_app.join("lib").join("main.dart");
-                    fs::write(main_dart, file).unwrap();
-                    host_app
-                } else {
-                    Path::new(&path_str).to_path_buf()
-                }
+        let flutter_project_path = flutter_project_path
+            .map_or(monorepo_root.join("sample_app"), |path_str| {
+                Path::new(&path_str).to_path_buf()
             });
 
         let flutter_project_assets_dir = flutter_project_path.join("build").join("flutter_assets");
