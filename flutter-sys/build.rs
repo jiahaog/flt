@@ -49,7 +49,8 @@ fn main() {
         .success());
 
     if cfg!(target_os = "macos") {
-        unzip(&embedder_zip_path, out_dir);
+        let framework_dir = out_dir.join("FlutterEmbedder.framework");
+        unzip(&embedder_zip_path, &framework_dir);
     } else {
         unzip(&embedder_zip_path, out_dir);
     };
