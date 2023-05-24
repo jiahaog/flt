@@ -90,12 +90,20 @@ impl FlutterEngine {
         }
     }
 
-    pub fn notify_display_update(&self, refresh_rate: f64) -> Result<(), Error> {
+    pub fn notify_display_update(
+        &self,
+        refresh_rate: f64,
+        (width, height): (usize, usize),
+        device_pixel_ratio: f64,
+    ) -> Result<(), Error> {
         let display = sys::FlutterEngineDisplay {
             struct_size: std::mem::size_of::<sys::FlutterEngineDisplay>(),
             display_id: 0,
             single_display: true,
             refresh_rate,
+            width,
+            height,
+            device_pixel_ratio,
         };
 
         let result = unsafe {
@@ -128,6 +136,7 @@ impl FlutterEngine {
             physical_view_inset_right: 0.0,
             physical_view_inset_bottom: 0.0,
             physical_view_inset_left: 0.0,
+            display_id: 0,
         };
 
         let result = unsafe {

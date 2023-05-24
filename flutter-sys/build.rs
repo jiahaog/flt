@@ -49,13 +49,7 @@ fn main() {
         .success());
 
     if cfg!(target_os = "macos") {
-        let framework_dir = &out_dir.join("FlutterEmbedder.framework");
-        unzip(&embedder_zip_path, framework_dir);
-        // There's a zip within the zip...
-        unzip(
-            &framework_dir.join("FlutterEmbedder.framework.zip"),
-            framework_dir,
-        );
+        unzip(&embedder_zip_path, out_dir);
     } else {
         unzip(&embedder_zip_path, out_dir);
     };
@@ -120,7 +114,7 @@ fn engine_url(engine_ref: &str) -> String {
     if cfg!(target_os = "macos") {
         format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/darwin-x64/FlutterEmbedder.framework.zip")
     } else {
-        format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/linux-x64/linux-x64-embedder")
+        format!("https://storage.googleapis.com/flutter_infra_release/flutter/{engine_ref}/linux-x64/linux-x64-embedder.zip")
     }
 }
 

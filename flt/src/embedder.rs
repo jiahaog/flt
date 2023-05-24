@@ -1,4 +1,4 @@
-use crate::constants::FPS;
+use crate::constants::{DEFAULT_PIXEL_RATIO, FPS};
 use crate::event::{EngineEvent, PlatformEvent};
 use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
@@ -109,7 +109,9 @@ impl TerminalEmbedder {
             mouse_down_pos: (0, 0),
         };
 
-        embedder.engine.notify_display_update(FPS as f64)?;
+        embedder
+            .engine
+            .notify_display_update(FPS as f64, (0, 0), DEFAULT_PIXEL_RATIO)?;
         embedder.reset_viewport()?;
 
         // This event sets the engine window dimensions which will kickstart rendering.

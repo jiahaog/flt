@@ -92,6 +92,7 @@ impl FlutterProjectArgs {
             log_tag: std::ptr::null(),
             on_pre_engine_restart_callback: None,
             update_semantics_callback: Some(update_semantics_callback),
+            update_semantics_callback2: None,
         }
     }
 }
