@@ -4,6 +4,8 @@
 
 This embedder draws to the current terminal window using [ANSI Escape Codes](https://en.wikipedia.org/wiki/ANSI_escape_code) to create a [Text-based user interface](https://en.wikipedia.org/wiki/Text-based_user_interface).
 
+https://github.com/jiahaog/flt/assets/7111741/17071ffc-d141-46c2-88c7-e6a6a7f47147
+
 ## Why?
 
 Mainly for fun to learn Rust and more about the Flutter Engine. It can also be a quick playground for Flutter without platform-specific or GUI specific dependencies; only a terminal is needed and it can even be used over SSH.
