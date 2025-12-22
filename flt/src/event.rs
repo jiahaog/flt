@@ -1,4 +1,4 @@
-use crate::{constants::DEFAULT_PIXEL_RATIO, Error, TerminalEmbedder};
+use crate::{Error, TerminalEmbedder};
 use flutter_sys::{EngineTask, Pixel, SemanticsUpdate};
 use std::fs::File;
 use std::io::Write;
@@ -44,7 +44,7 @@ impl TerminalEmbedder {
                                 (self.dimensions.0 as f64 * self.zoom).round() as usize,
                                 (self.dimensions.1 as f64 * self.zoom).round() as usize,
                             ),
-                            DEFAULT_PIXEL_RATIO * self.zoom * self.scale,
+                            self.terminal_window.device_pixel_ratio() * self.zoom * self.scale,
                         )?;
 
                         self.terminal_window.draw(pixel_grid, self.window_offset)?;

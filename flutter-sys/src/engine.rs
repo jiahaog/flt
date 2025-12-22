@@ -252,36 +252,32 @@ extern "C" fn software_surface_present_callback(
     */
     let width = row_bytes / 4;
 
-    // In allocation, each group of 4 bits represents a pixel.
-    let buffer = allocation.chunks(4).into_iter().map(|c| {
-        // The order of what each bit represents seems to be platform specific (at least
-        // experimentally).
-        if cfg!(target_os = "macos") {
-            let r = c[0];
-            let g = c[1];
-            let b = c[2];
-            let a = c[3];
+    let mut pixel_grid = Vec::with_capacity(height);
 
-            Pixel { r, g, b, a }
-        } else {
-            let b = c[0];
-            let g = c[1];
-            let r = c[2];
-            let a = c[3];
+    for row_idx in 0..height {
+        let mut row = Vec::with_capacity(width);
+        let start = row_idx * row_bytes;
+        let row_data = &allocation[start..start + row_bytes];
 
-            Pixel { r, g, b, a }
+        for c in row_data.chunks_exact(4) {
+            if cfg!(target_os = "macos") {
+                row.push(Pixel {
+                    r: c[0],
+                    g: c[1],
+                    b: c[2],
+                    a: c[3],
+                });
+            } else {
+                row.push(Pixel {
+                    b: c[0],
+                    g: c[1],
+                    r: c[2],
+                    a: c[3],
+                });
+            }
         }
-    });
-
-    let pixel_grid = buffer.enumerate().fold(vec![], |mut acc, (i, pixel)| {
-        let x = i % width;
-        if x == 0 {
-            acc.push(vec![]);
-        }
-
-        acc.last_mut().unwrap().push(pixel);
-        acc
-    });
+        pixel_grid.push(row);
+    }
 
     user_data
         .callbacks

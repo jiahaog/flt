@@ -38,6 +38,7 @@ pub struct TerminalWindow {
     kitty_mode: bool,
     pixels_per_col: f64,
     pixels_per_row: f64,
+    device_pixel_ratio: f64,
 }
 
 impl Drop for TerminalWindow {
@@ -97,6 +98,17 @@ impl TerminalWindow {
             (1.0, 2.0)
         };
 
+        let device_pixel_ratio = if kitty_mode {
+            // Heuristic: Assume a standard terminal line height corresponds to ~22 logical pixels.
+            // On a high-DPI screen, pixels_per_row might be ~35-40.
+            // 35 / 22 ~= 1.6.
+            // If we use 2.0, elements will be larger.
+            // Let's try matching typical desktop scaling.
+            pixels_per_row.max(1.0) / 22.0
+        } else {
+            crate::constants::DEFAULT_PIXEL_RATIO
+        };
+
         thread::spawn(move || {
             let mut should_run = true;
             while should_run {
@@ -120,7 +132,12 @@ impl TerminalWindow {
             kitty_mode,
             pixels_per_col,
             pixels_per_row,
+            device_pixel_ratio,
         }
+    }
+
+    pub(crate) fn device_pixel_ratio(&self) -> f64 {
+        self.device_pixel_ratio
     }
 
     pub(crate) fn size(&self) -> (usize, usize) {
@@ -316,7 +333,11 @@ impl TerminalWindow {
 
             let draw_duration = Instant::now().duration_since(start_instant);
 
-            let hint_and_fps = format!("{HELP_HINT} [{}]", draw_duration.as_millis());
+            let hint_and_fps = format!(
+                "{HELP_HINT} [{}]
+",
+                draw_duration.as_millis()
+            );
             self.stdout.queue(MoveTo(
                 (pixel_width - hint_and_fps.len()) as u16,
                 (terminal_height - 1) as u16,
@@ -389,16 +410,14 @@ impl TerminalWindow {
         for (i, chunk) in chunks.iter().enumerate() {
             let is_last = i == chunk_count - 1;
             let m = if is_last { 0 } else { 1 };
-
             // For the first chunk, we include the header keys.
             // For subsequent chunks, we just send m=<val>.
             // Actually, the keys need to be in the first command.
             // Payload follows ;
-
             if i == 0 {
                 self.stdout.queue(Print(format!("{},m={};", header, m)))?;
             } else {
-                self.stdout.queue(Print(format!("\x1b_Gm={};", m)))?;
+                self.stdout.queue(Print(format!("\x1b_Gi=1,m={};", m)))?;
             }
 
             self.stdout.write_all(chunk)?;
@@ -445,7 +464,7 @@ impl TerminalWindow {
                 "Ctrl + z: Show semantic labels (very experimental and jank).",
             ))?;
             self.stdout.queue(MoveTo(0, 12))?;
-            self.stdout.queue(Print("? Toggle help."))?;
+            self.stdout.queue(Print("?: Toggle help."))?;
 
             self.stdout.queue(MoveTo(0, 14))?;
             self.stdout.queue(Print("Tips: Changing the current terminal emulator's text size will make things look a lot better. "))?;
