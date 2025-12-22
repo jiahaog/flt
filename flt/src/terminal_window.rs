@@ -11,7 +11,6 @@ use crossterm::terminal::{
     LeaveAlternateScreen,
 };
 use crossterm::{ExecutableCommand, QueueableCommand};
-use flutter_sys::Pixel;
 use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
@@ -99,11 +98,6 @@ impl TerminalWindow {
         };
 
         let device_pixel_ratio = if kitty_mode {
-            // Heuristic: Assume a standard terminal line height corresponds to ~22 logical pixels.
-            // On a high-DPI screen, pixels_per_row might be ~35-40.
-            // 35 / 22 ~= 1.6.
-            // If we use 2.0, elements will be larger.
-            // Let's try matching typical desktop scaling.
             pixels_per_row.max(1.0) / 22.0
         } else {
             crate::constants::DEFAULT_PIXEL_RATIO
@@ -157,10 +151,11 @@ impl TerminalWindow {
         // TODO(jiahaog): This is slow.
         self.semantics = label_positions.into_iter().collect();
     }
-
     pub(crate) fn draw(
         &mut self,
-        pixel_grid: Vec<Vec<Pixel>>,
+        buffer: Vec<u8>,
+        width: usize,
+        height: usize,
         (x_offset, y_offset): (isize, isize),
     ) -> Result<(), std::io::Error> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
@@ -173,103 +168,40 @@ impl TerminalWindow {
         }
 
         if self.kitty_mode {
-            return self.draw_kitty(pixel_grid, (x_offset, y_offset));
+            return self.draw_kitty(buffer, width, height);
         }
 
         let start_instant = Instant::now();
 
-        // TODO(jiahaog): Enable this assertion. This breaks when zooming out.
-        // assert_eq!(pixel_grid.len() % 2, 0, "Drawn pixels should always be a multiple of two as the terminal height is multiplied by two before being provided to flutter.");
+        let (cell_cols, cell_rows) = terminal::size().unwrap();
+        let cell_rows = cell_rows as usize - LOGGING_WINDOW_HEIGHT;
+        let cell_cols = cell_cols as usize;
 
-        // TODO(jiahaog): This implementation is horrible and should be rewritten.
+        let mut lines = Vec::with_capacity(cell_rows);
 
-        let grid_with_semantics: Vec<Vec<(Pixel, Option<String>)>> = pixel_grid
-            .into_iter()
-            .enumerate()
-            .map(|(y, row)| {
-                row.into_iter()
-                    .enumerate()
-                    .map(|(x, pixel)| (pixel, self.semantics.get(&(x, y)).cloned()))
-                    .collect()
-            })
-            .collect();
+        for y in (0..cell_rows).step_by(1) {
+            let mut row_cells = Vec::with_capacity(cell_cols);
 
-        let (pixel_width, pixel_height) = self.size();
+            for x in 0..cell_cols {
+                let pixel_x = x_offset + x as isize;
+                let pixel_y_top = y_offset + (y * 2) as isize;
+                let pixel_y_bot = y_offset + (y * 2 + 1) as isize;
 
-        let grid_for_terminal: Vec<Vec<(Pixel, Option<String>)>> = (0..pixel_height)
-            .map(|y| {
-                let y = y_offset + y as isize;
-                if y < 0 || y >= grid_with_semantics.len() as isize {
-                    return vec![(Pixel::zero(), None); pixel_width];
-                }
+                let top_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_top);
+                let bot_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_bot);
 
-                let y = y as usize;
+                let semantics = None;
 
-                (0..pixel_width)
-                    .map(|x| {
-                        let x = x_offset + x as isize;
+                row_cells.push(TerminalCell {
+                    top: to_color_from_bytes(top_pixel),
+                    bottom: to_color_from_bytes(bot_pixel),
+                    semantics,
+                });
+            }
+            lines.push(row_cells);
+        }
 
-                        if x < 0 || x >= grid_with_semantics.first().unwrap().len() as isize {
-                            return (Pixel::zero(), None);
-                        }
-
-                        let x = x as usize;
-
-                        grid_with_semantics[y][x].clone()
-                    })
-                    .collect()
-            })
-            .collect();
-
-        assert!(grid_for_terminal.len() == pixel_height);
-        assert!(grid_for_terminal.first().unwrap().len() == pixel_width);
-
-        // Each element is one pixel, but when it is rendered to the terminal,
-        // two rows share one character, using the unicode BLOCK characters.
-        let lines = (0..grid_for_terminal.len())
-            .step_by(2)
-            .map(|y| {
-                // TODO(jiahaog): Avoid the borrow here.
-                let tops = &grid_for_terminal[y];
-                let bottoms = &grid_for_terminal[y + 1];
-
-                zip(tops, bottoms)
-                    .map(
-                        |((top_pixel, top_semantics), (bottom_pixel, bottom_semantics))| {
-                            // Find the semantic labels for the current cell.
-                            let semantics = match (top_semantics, bottom_semantics) {
-                                (None, None) => None,
-                                (None, right) => right.clone(),
-                                (left, None) => left.clone(),
-                                // Use the longest.
-                                (Some(left), Some(right)) => Some(if left.len() > right.len() {
-                                    left.clone()
-                                } else {
-                                    right.clone()
-                                }),
-                            };
-
-                            TerminalCell {
-                                top: to_color(&top_pixel),
-                                bottom: to_color(&bottom_pixel),
-                                semantics,
-                            }
-                        },
-                    )
-                    .collect::<Vec<TerminalCell>>()
-            })
-            .collect::<Vec<Vec<TerminalCell>>>();
-
-        // Refreshing the entire terminal (with the clear char) and outputting
-        // everything on every iteration is costly and causes the terminal to
-        // flicker.
-        //
-        // Instead, only "re-render" different characters, if it is different from
-        // the previous frame.
-
-        // Means that the screen dimensions has changed.
         if self.lines.len() != lines.len() {
-            // As the next zip needs to be a zip_longest.
             self.lines = vec![vec![]; lines.len()];
         }
 
@@ -295,24 +227,6 @@ impl TerminalWindow {
                     BLOCK_UPPER.to_string().with(*top).on(*bottom),
                 ))?;
             }
-
-            // Second pass to put semantics over pixels.
-            for (
-                x,
-                TerminalCell {
-                    top: _,
-                    bottom: _,
-                    semantics,
-                },
-            ) in current.into_iter().enumerate()
-            {
-                if semantics.is_none() {
-                    continue;
-                }
-                self.stdout.queue(MoveTo(x as u16, y as u16))?;
-                // TODO(jiahaog): Reflow within bounding box, or otherwise truncate.
-                self.stdout.queue(Print(semantics.as_ref().unwrap()))?;
-            }
         }
 
         {
@@ -333,13 +247,9 @@ impl TerminalWindow {
 
             let draw_duration = Instant::now().duration_since(start_instant);
 
-            let hint_and_fps = format!(
-                "{HELP_HINT} [{}]
-",
-                draw_duration.as_millis()
-            );
+            let hint_and_fps = format!("{HELP_HINT} [{}]", draw_duration.as_millis());
             self.stdout.queue(MoveTo(
-                (pixel_width - hint_and_fps.len()) as u16,
+                (cell_cols - hint_and_fps.len()) as u16,
                 (terminal_height - 1) as u16,
             ))?;
             self.stdout.queue(Print(hint_and_fps))?;
@@ -350,44 +260,19 @@ impl TerminalWindow {
 
         Ok(())
     }
-
     fn draw_kitty(
         &mut self,
-        pixel_grid: Vec<Vec<Pixel>>,
-        (x_offset, y_offset): (isize, isize),
+        mut buffer: Vec<u8>,
+        width: usize,
+        height: usize,
     ) -> Result<(), std::io::Error> {
-        let (pixel_width, pixel_height) = self.size();
-        let (term_cols, term_rows) = terminal::size().unwrap();
-        let display_rows = term_rows as usize - LOGGING_WINDOW_HEIGHT;
-        let display_cols = term_cols as usize;
-
-        // Flatten the grid into RGBA bytes.
-        let mut rgba_bytes = Vec::with_capacity(pixel_width * pixel_height * 4);
-
-        for y in 0..pixel_height {
-            let src_y = y_offset + y as isize;
-            if src_y < 0 || src_y >= pixel_grid.len() as isize {
-                // Opaque black line.
-                for _ in 0..pixel_width {
-                    rgba_bytes.extend([0, 0, 0, 255]);
-                }
-                continue;
-            }
-            let src_y = src_y as usize;
-            let row = &pixel_grid[src_y];
-
-            for x in 0..pixel_width {
-                let src_x = x_offset + x as isize;
-                if src_x < 0 || src_x >= row.len() as isize {
-                    rgba_bytes.extend([0, 0, 0, 255]);
-                } else {
-                    let p = row[src_x as usize];
-                    rgba_bytes.extend([p.r, p.g, p.b, p.a]);
-                }
+        if !cfg!(target_os = "macos") {
+            for chunk in buffer.chunks_exact_mut(4) {
+                chunk.swap(0, 2);
             }
         }
 
-        let encoded = BASE64_STANDARD.encode(&rgba_bytes);
+        let encoded = BASE64_STANDARD.encode(&buffer);
 
         // Send graphics command.
         self.stdout.queue(MoveTo(0, 0))?;
@@ -396,16 +281,7 @@ impl TerminalWindow {
         let chunks: Vec<&[u8]> = encoded.as_bytes().chunks(4096).collect();
         let chunk_count = chunks.len();
 
-        // Initialize transfer.
-        // f=32: 32-bit RGBA
-        // s={pixel_width},v={pixel_height}: dimensions
-        // a=T: transmit and display
-        // q=2: quiet mode (no response)
-        // c={cols},r={rows}: scale to fill viewport
-        let header = format!(
-            "\x1b_Gf=32,s={},v={},c={},r={},a=T,q=2",
-            pixel_width, pixel_height, display_cols, display_rows
-        );
+        let header = format!("\x1b_Gf=32,s={},v={},a=T,q=2,i=1", width, height);
 
         for (i, chunk) in chunks.iter().enumerate() {
             let is_last = i == chunk_count - 1;
@@ -423,7 +299,6 @@ impl TerminalWindow {
             self.stdout.write_all(chunk)?;
             self.stdout.queue(Print("\x1b\\"))?;
         }
-
         self.stdout.flush()?;
         Ok(())
     }
@@ -509,11 +384,39 @@ fn normalize_event_height(event: Event, x_scale: f64, y_scale: f64) -> Event {
     }
 }
 
-fn to_color(Pixel { r, g, b, a: _ }: &Pixel) -> Color {
-    Color::Rgb {
-        r: *r,
-        g: *g,
-        b: *b,
+// Helper to get pixel from flat buffer safely
+fn get_pixel(buffer: &[u8], width: usize, height: usize, x: isize, y: isize) -> Option<&[u8]> {
+    if x < 0 || y < 0 || x >= width as isize || y >= height as isize {
+        return None;
+    }
+    let idx = (y as usize * width + x as usize) * 4;
+    if idx + 4 <= buffer.len() {
+        Some(&buffer[idx..idx + 4])
+    } else {
+        None
+    }
+}
+
+fn to_color_from_bytes(pixel_bytes: Option<&[u8]>) -> Color {
+    match pixel_bytes {
+        Some(slice) => {
+            // Assume engine format matches platform (BGRA on Linux, RGBA on Mac)
+            // But we want Color::Rgb which is r, g, b.
+            if cfg!(target_os = "macos") {
+                Color::Rgb {
+                    r: slice[0],
+                    g: slice[1],
+                    b: slice[2],
+                }
+            } else {
+                Color::Rgb {
+                    r: slice[2],
+                    g: slice[1],
+                    b: slice[0],
+                }
+            }
+        }
+        None => Color::Rgb { r: 0, g: 0, b: 0 },
     }
 }
 

@@ -1,4 +1,3 @@
-use crate::pixel::Pixel;
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
 use crate::user_data::UserData;
@@ -252,38 +251,11 @@ extern "C" fn software_surface_present_callback(
     */
     let width = row_bytes / 4;
 
-    let mut pixel_grid = Vec::with_capacity(height);
-
-    for row_idx in 0..height {
-        let mut row = Vec::with_capacity(width);
-        let start = row_idx * row_bytes;
-        let row_data = &allocation[start..start + row_bytes];
-
-        for c in row_data.chunks_exact(4) {
-            if cfg!(target_os = "macos") {
-                row.push(Pixel {
-                    r: c[0],
-                    g: c[1],
-                    b: c[2],
-                    a: c[3],
-                });
-            } else {
-                row.push(Pixel {
-                    b: c[0],
-                    g: c[1],
-                    r: c[2],
-                    a: c[3],
-                });
-            }
-        }
-        pixel_grid.push(row);
-    }
-
     user_data
         .callbacks
         .draw_callback
         .as_ref()
-        .map(|callback| callback(pixel_grid));
+        .map(|callback| callback(allocation, width, height));
 
     return true;
 }

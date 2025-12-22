@@ -1,5 +1,5 @@
 use crate::{Error, TerminalEmbedder};
-use flutter_sys::{EngineTask, Pixel, SemanticsUpdate};
+use flutter_sys::{EngineTask, SemanticsUpdate};
 use std::fs::File;
 use std::io::Write;
 
@@ -13,7 +13,7 @@ pub(crate) enum PlatformEvent {
 #[derive(Debug)]
 pub(crate) enum EngineEvent {
     UpdateSemantics(Vec<SemanticsUpdate>),
-    Draw(Vec<Vec<Pixel>>),
+    Draw(Vec<u8>, usize, usize),
     EngineTask(EngineTask),
     LogMessage { tag: String, message: String },
 }
@@ -36,7 +36,7 @@ impl TerminalEmbedder {
                             writeln!(f, "{:#?}", self.semantics_tree.as_graph()).unwrap();
                         }
                     }
-                    PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)) => {
+                    PlatformEvent::EngineEvent(EngineEvent::Draw(buffer, width, height)) => {
                         // Not sure if doing this on every frame is ok, hoping that the engine has
                         // some mechanism to make this a no-op if the parameters are unchanged.
                         self.engine.send_window_metrics_event(
@@ -47,7 +47,8 @@ impl TerminalEmbedder {
                             self.terminal_window.device_pixel_ratio() * self.zoom * self.scale,
                         )?;
 
-                        self.terminal_window.draw(pixel_grid, self.window_offset)?;
+                        self.terminal_window
+                            .draw(buffer, width, height, self.window_offset)?;
                     }
                     PlatformEvent::EngineEvent(EngineEvent::EngineTask(engine_task)) => {
                         self.platform_task_runner.post_task(engine_task);

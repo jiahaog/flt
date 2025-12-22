@@ -86,9 +86,13 @@ impl TerminalEmbedder {
                         )))
                         .unwrap();
                 })),
-                draw_callback: Some(Box::new(move |pixel_grid| {
+                draw_callback: Some(Box::new(move |buffer, width, height| {
                     sender_d
-                        .send(PlatformEvent::EngineEvent(EngineEvent::Draw(pixel_grid)))
+                        .send(PlatformEvent::EngineEvent(EngineEvent::Draw(
+                            buffer.to_vec(),
+                            width,
+                            height,
+                        )))
                         .unwrap();
                 })),
             }
@@ -121,7 +125,7 @@ impl TerminalEmbedder {
 
         // This event sets the engine window dimensions which will kickstart rendering.
         main_sender
-            .send(PlatformEvent::EngineEvent(EngineEvent::Draw(vec![])))
+            .send(PlatformEvent::EngineEvent(EngineEvent::Draw(vec![], 0, 0)))
             .unwrap();
 
         Ok(embedder)
