@@ -266,6 +266,7 @@ impl TerminalWindow {
         width: usize,
         height: usize,
     ) -> Result<(), std::io::Error> {
+        let start = Instant::now();
         if !cfg!(target_os = "macos") {
             for chunk in buffer.chunks_exact_mut(4) {
                 chunk.swap(0, 2);
@@ -300,6 +301,12 @@ impl TerminalWindow {
             self.stdout.queue(Print("\x1b\\"))?;
         }
         self.stdout.flush()?;
+
+        {
+            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/tmp/flt_frame_timings.log") {
+                writeln!(f, "Frame time: {}ms", start.elapsed().as_millis()).ok();
+            }
+        }
         Ok(())
     }
 
