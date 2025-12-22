@@ -127,6 +127,8 @@ impl TerminalEmbedder {
                                 vec![],
                             )?;
                         }
+                        crossterm::event::MouseEventKind::ScrollLeft
+                        | crossterm::event::MouseEventKind::ScrollRight => {}
                     }
                 }
                 Ok(())

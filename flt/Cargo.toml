@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.2.1", features = ["derive"] }
-crossterm = "0.26.1"
+crossterm = "0.27.0"
 flutter-sys = { path = "../flutter-sys" }

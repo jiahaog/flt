@@ -9,7 +9,7 @@ use crossterm::terminal::{
     self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
     LeaveAlternateScreen,
 };
-use crossterm::{ErrorKind, ExecutableCommand, QueueableCommand};
+use crossterm::{ExecutableCommand, QueueableCommand};
 use flutter_sys::Pixel;
 use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Stdout, Write};
@@ -119,7 +119,7 @@ impl TerminalWindow {
         &mut self,
         pixel_grid: Vec<Vec<Pixel>>,
         (x_offset, y_offset): (isize, isize),
-    ) -> Result<(), ErrorKind> {
+    ) -> Result<(), std::io::Error> {
         // TODO(jiahaog): Stub out stdout instead so more things actually happen.
         if self.simple_output {
             return Ok(());
@@ -310,7 +310,7 @@ impl TerminalWindow {
         self.logs.push_back(message);
     }
 
-    pub(crate) fn toggle_show_help(&mut self) -> Result<(), ErrorKind> {
+    pub(crate) fn toggle_show_help(&mut self) -> Result<(), std::io::Error> {
         self.showing_help = !self.showing_help;
 
         self.stdout.execute(Clear(ClearType::All))?;

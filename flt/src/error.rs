@@ -3,7 +3,7 @@ use std::fmt::Display;
 #[derive(Debug)]
 pub enum Error {
     EngineError(flutter_sys::Error),
-    TerminalError(crossterm::ErrorKind),
+    TerminalError(std::io::Error),
 }
 
 impl From<flutter_sys::Error> for Error {
@@ -12,8 +12,8 @@ impl From<flutter_sys::Error> for Error {
     }
 }
 
-impl From<crossterm::ErrorKind> for Error {
-    fn from(value: crossterm::ErrorKind) -> Self {
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
         Error::TerminalError(value)
     }
 }
