@@ -11,10 +11,12 @@ use crossterm::terminal::{
     LeaveAlternateScreen,
 };
 use crossterm::{ExecutableCommand, QueueableCommand};
+use libc::{ftruncate, shm_open, shm_unlink, O_CREAT, O_RDWR, O_TRUNC};
+use memmap2::MmapMut;
 use std::collections::{HashMap, VecDeque};
-use std::io::{stdout, Seek, SeekFrom, Stdout, Write};
+use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
-use std::path::PathBuf;
+use std::os::unix::io::FromRawFd;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
@@ -39,51 +41,59 @@ pub struct TerminalWindow {
     pixels_per_col: f64,
     pixels_per_row: f64,
     device_pixel_ratio: f64,
-    file_buffer: Option<FileBuffer>,
+    shm_buffer: Option<SharedMemoryBuffer>,
+    frame_count: u64,
 }
 
-struct FileBuffer {
+struct SharedMemoryBuffer {
+    name: String,
+    raw_name: String,
+    // We keep file to keep the FD open (though shm persists until unlinked/closed)
+    // and to allow resizing (if we used File methods).
+    // But we used libc::shm_open which returns raw fd.
+    // We can wrap it in ManuallyDrop<File> or just raw fd.
+    // memmap2 `map_mut` takes &File.
     #[allow(dead_code)]
-    path: PathBuf,
     file: std::fs::File,
-    encoded_path: String,
+    map: Option<MmapMut>,
 }
 
-impl FileBuffer {
-    fn new() -> std::io::Result<Self> {
+impl SharedMemoryBuffer {
+    fn new(size: usize, suffix: u64) -> std::io::Result<Self> {
         let pid = std::process::id();
-        let path = std::env::temp_dir().join(format!("flt-buffer-{}.rgba", pid));
+        let raw_name = format!("/flt_{}_{}", pid, suffix);
+        let c_name = std::ffi::CString::new(raw_name.clone())?;
 
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&path)?;
+        // Ensure clean state
+        unsafe { shm_unlink(c_name.as_ptr()) };
 
-        // Kitty requires path to be base64 encoded
-        let encoded_path = BASE64_STANDARD.encode(path.to_string_lossy().as_bytes());
+        let fd = unsafe { shm_open(c_name.as_ptr(), O_RDWR | O_CREAT | O_TRUNC, 0o600) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+
+        if unsafe { ftruncate(fd, size as i64) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let map = unsafe { MmapMut::map_mut(&file)? };
 
         Ok(Self {
-            path,
+            name: BASE64_STANDARD.encode(&raw_name),
+            raw_name,
             file,
-            encoded_path,
+            map: Some(map),
         })
-    }
-
-    fn write_data(&mut self, data: &[u8]) -> std::io::Result<()> {
-        self.file.seek(SeekFrom::Start(0))?;
-        self.file.set_len(0)?;
-        self.file.write_all(data)?;
-        self.file.flush()?;
-        Ok(())
     }
 }
 
-impl Drop for FileBuffer {
+impl Drop for SharedMemoryBuffer {
     fn drop(&mut self) {
-        // Attempt to delete the temporary file when we are done
-        let _ = std::fs::remove_file(&self.path);
+        if let Ok(c_name) = std::ffi::CString::new(self.raw_name.clone()) {
+            unsafe { shm_unlink(c_name.as_ptr()) };
+        }
     }
 }
 
@@ -174,7 +184,8 @@ impl TerminalWindow {
             pixels_per_col,
             pixels_per_row,
             device_pixel_ratio,
-            file_buffer: None,
+            shm_buffer: None,
+            frame_count: 0,
         }
     }
 
@@ -327,13 +338,17 @@ impl TerminalWindow {
             }
         }
 
-        // File Buffer Setup
-        if self.file_buffer.is_none() {
-            self.file_buffer = Some(FileBuffer::new()?);
-        }
+        // Generate unique SHM segment for this frame
+        self.frame_count += 1;
+        let needed_size = buffer.len();
 
-        let fb = self.file_buffer.as_mut().unwrap();
-        fb.write_data(&buffer)?;
+        let mut new_shm = SharedMemoryBuffer::new(needed_size, self.frame_count)?;
+
+        // Write to SHM
+        if let Some(map) = &mut new_shm.map {
+            map[0..needed_size].copy_from_slice(&buffer);
+            let _ = map.flush();
+        }
 
         // Send Command
         self.stdout.queue(MoveTo(0, 0))?;
@@ -344,16 +359,18 @@ impl TerminalWindow {
         // a=T: transmit and display
         // q=2: quiet mode (no response)
         // i=1: image ID for overwriting
-        // t=f (File Transport)
-        // Payload is the encoded path
-        let header = format!("\x1b_Gf=32,s={},v={},a=T,q=2,i=1,t=f;", width, height);
-        let payload = &fb.encoded_path;
-
-        self.stdout.queue(Print(header))?;
-        self.stdout.queue(Print(payload))?;
-        self.stdout.queue(Print("\x1b\\"))?;
-
+        // t=s (Shared Memory)
+        // Payload is the encoded name of the NEW SHM segment
+        let code = format!(
+            "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,t=s;{}\x1b\\",
+            width, height, &new_shm.name
+        );
+        self.stdout.queue(Print(code))?;
         self.stdout.flush()?;
+
+        // Store the new SHM buffer.
+        // This drops the previous one (if any), which triggers shm_unlink.
+        self.shm_buffer = Some(new_shm);
 
         {
             if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -361,7 +378,7 @@ impl TerminalWindow {
                 .create(true)
                 .open("/tmp/flt_frame_timings.log")
             {
-                writeln!(f, "Frame time: {}ms", start.elapsed().as_millis()).ok();
+                let _ = writeln!(f, "Frame time: {}ms", start.elapsed().as_millis());
             }
         }
         Ok(())

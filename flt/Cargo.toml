@@ -10,3 +10,5 @@ base64 = "0.22.1"
 clap = { version = "4.2.1", features = ["derive"] }
 crossterm = "0.27.0"
 flutter-sys = { path = "../flutter-sys" }
+libc = "0.2.178"
+memmap2 = "0.9.9"
