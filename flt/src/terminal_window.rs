@@ -2,11 +2,12 @@
 //! functionality beyond the data classes.
 
 use crate::event::PlatformEvent;
+use base64::prelude::*;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{read, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{
-    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+    self, disable_raw_mode, enable_raw_mode, window_size, Clear, ClearType, EnterAlternateScreen,
     LeaveAlternateScreen,
 };
 use crossterm::{ExecutableCommand, QueueableCommand};
@@ -14,7 +15,6 @@ use flutter_sys::Pixel;
 use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
-use std::ops::Add;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
@@ -35,6 +35,9 @@ pub struct TerminalWindow {
     alternate_screen: bool,
     showing_help: bool,
     pub(crate) log_events: bool,
+    kitty_mode: bool,
+    pixels_per_col: f64,
+    pixels_per_row: f64,
 }
 
 impl Drop for TerminalWindow {
@@ -60,6 +63,7 @@ impl TerminalWindow {
         simple_output: bool,
         alternate_screen: bool,
         log_events: bool,
+        kitty_mode: bool,
         event_sender: Sender<PlatformEvent>,
     ) -> Self {
         let mut stdout = stdout();
@@ -77,11 +81,27 @@ impl TerminalWindow {
             stdout.execute(EnableMouseCapture).unwrap();
         }
 
+        let (pixels_per_col, pixels_per_row) = if kitty_mode {
+            match window_size() {
+                Ok(crossterm::terminal::WindowSize {
+                    width: w_px,
+                    height: h_px,
+                    rows,
+                    columns,
+                }) if w_px > 0 && h_px > 0 && rows > 0 && columns > 0 => {
+                    (w_px as f64 / columns as f64, h_px as f64 / rows as f64)
+                }
+                _ => (10.0, 20.0), // Fallback to a high-res default
+            }
+        } else {
+            (1.0, 2.0)
+        };
+
         thread::spawn(move || {
             let mut should_run = true;
             while should_run {
                 let event = read().unwrap();
-                let event = normalize_event_height(event);
+                let event = normalize_event_height(event, pixels_per_col, pixels_per_row);
                 should_run = event_sender
                     .send(PlatformEvent::TerminalEvent(event))
                     .is_ok();
@@ -97,6 +117,9 @@ impl TerminalWindow {
             showing_help: false,
             alternate_screen,
             log_events,
+            kitty_mode,
+            pixels_per_col,
+            pixels_per_row,
         }
     }
 
@@ -107,7 +130,10 @@ impl TerminalWindow {
         // Space for the logging window.
         let height = height - LOGGING_WINDOW_HEIGHT;
 
-        (width, to_external_height(height))
+        (
+            (width as f64 * self.pixels_per_col).round() as usize,
+            (height as f64 * self.pixels_per_row).round() as usize,
+        )
     }
 
     pub(crate) fn update_semantics(&mut self, label_positions: Vec<((usize, usize), String)>) {
@@ -127,6 +153,10 @@ impl TerminalWindow {
 
         if self.showing_help {
             return Ok(());
+        }
+
+        if self.kitty_mode {
+            return self.draw_kitty(pixel_grid, (x_offset, y_offset));
         }
 
         let start_instant = Instant::now();
@@ -300,6 +330,85 @@ impl TerminalWindow {
         Ok(())
     }
 
+    fn draw_kitty(
+        &mut self,
+        pixel_grid: Vec<Vec<Pixel>>,
+        (x_offset, y_offset): (isize, isize),
+    ) -> Result<(), std::io::Error> {
+        let (pixel_width, pixel_height) = self.size();
+        let (term_cols, term_rows) = terminal::size().unwrap();
+        let display_rows = term_rows as usize - LOGGING_WINDOW_HEIGHT;
+        let display_cols = term_cols as usize;
+
+        // Flatten the grid into RGBA bytes.
+        let mut rgba_bytes = Vec::with_capacity(pixel_width * pixel_height * 4);
+
+        for y in 0..pixel_height {
+            let src_y = y_offset + y as isize;
+            if src_y < 0 || src_y >= pixel_grid.len() as isize {
+                // Opaque black line.
+                for _ in 0..pixel_width {
+                    rgba_bytes.extend([0, 0, 0, 255]);
+                }
+                continue;
+            }
+            let src_y = src_y as usize;
+            let row = &pixel_grid[src_y];
+
+            for x in 0..pixel_width {
+                let src_x = x_offset + x as isize;
+                if src_x < 0 || src_x >= row.len() as isize {
+                    rgba_bytes.extend([0, 0, 0, 255]);
+                } else {
+                    let p = row[src_x as usize];
+                    rgba_bytes.extend([p.r, p.g, p.b, p.a]);
+                }
+            }
+        }
+
+        let encoded = BASE64_STANDARD.encode(&rgba_bytes);
+
+        // Send graphics command.
+        self.stdout.queue(MoveTo(0, 0))?;
+
+        // Chunk size 4096 is standard for kitty protocol.
+        let chunks: Vec<&[u8]> = encoded.as_bytes().chunks(4096).collect();
+        let chunk_count = chunks.len();
+
+        // Initialize transfer.
+        // f=32: 32-bit RGBA
+        // s={pixel_width},v={pixel_height}: dimensions
+        // a=T: transmit and display
+        // q=2: quiet mode (no response)
+        // c={cols},r={rows}: scale to fill viewport
+        let header = format!(
+            "\x1b_Gf=32,s={},v={},c={},r={},a=T,q=2",
+            pixel_width, pixel_height, display_cols, display_rows
+        );
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let is_last = i == chunk_count - 1;
+            let m = if is_last { 0 } else { 1 };
+
+            // For the first chunk, we include the header keys.
+            // For subsequent chunks, we just send m=<val>.
+            // Actually, the keys need to be in the first command.
+            // Payload follows ;
+
+            if i == 0 {
+                self.stdout.queue(Print(format!("{},m={};", header, m)))?;
+            } else {
+                self.stdout.queue(Print(format!("\x1b_Gm={};", m)))?;
+            }
+
+            self.stdout.write_all(chunk)?;
+            self.stdout.queue(Print("\x1b\\"))?;
+        }
+
+        self.stdout.flush()?;
+        Ok(())
+    }
+
     pub(crate) fn log(&mut self, message: String) {
         if self.simple_output {
             println!("{message}");
@@ -336,7 +445,7 @@ impl TerminalWindow {
                 "Ctrl + z: Show semantic labels (very experimental and jank).",
             ))?;
             self.stdout.queue(MoveTo(0, 12))?;
-            self.stdout.queue(Print("?: Toggle help."))?;
+            self.stdout.queue(Print("? Toggle help."))?;
 
             self.stdout.queue(MoveTo(0, 14))?;
             self.stdout.queue(Print("Tips: Changing the current terminal emulator's text size will make things look a lot better. "))?;
@@ -363,26 +472,18 @@ struct TerminalCell {
 
 const BLOCK_UPPER: char = '▀';
 
-/// Translates from a "Internal" height to a "External" height.
-///
-/// "External" height is the height seen by users of this class.
-/// "Internal" height is the height actually used when reading / writing to the
-/// terminal.
-///
-/// Translation is needed as the terminal drawing strategy merges two lines of
-/// pixels (seen to external users) into one line when written to the terminal.
-fn to_external_height<T: Add<Output = T> + Copy>(internal_height: T) -> T {
-    internal_height + internal_height
-}
-
-fn normalize_event_height(event: Event) -> Event {
+fn normalize_event_height(event: Event, x_scale: f64, y_scale: f64) -> Event {
     match event {
         Event::Resize(columns, rows) => {
             let rows = rows - LOGGING_WINDOW_HEIGHT as u16;
-            Event::Resize(columns, to_external_height(rows))
+            Event::Resize(
+                (columns as f64 * x_scale).round() as u16,
+                (rows as f64 * y_scale).round() as u16,
+            )
         }
         Event::Mouse(mut mouse_event) => {
-            mouse_event.row = to_external_height(mouse_event.row);
+            mouse_event.column = (mouse_event.column as f64 * x_scale).round() as u16;
+            mouse_event.row = (mouse_event.row as f64 * y_scale).round() as u16;
             Event::Mouse(mouse_event)
         }
         x => x,
