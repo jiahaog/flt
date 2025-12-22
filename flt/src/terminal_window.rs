@@ -12,8 +12,9 @@ use crossterm::terminal::{
 };
 use crossterm::{ExecutableCommand, QueueableCommand};
 use std::collections::{HashMap, VecDeque};
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout, Seek, SeekFrom, Stdout, Write};
 use std::iter::zip;
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
@@ -38,6 +39,52 @@ pub struct TerminalWindow {
     pixels_per_col: f64,
     pixels_per_row: f64,
     device_pixel_ratio: f64,
+    file_buffer: Option<FileBuffer>,
+}
+
+struct FileBuffer {
+    #[allow(dead_code)]
+    path: PathBuf,
+    file: std::fs::File,
+    encoded_path: String,
+}
+
+impl FileBuffer {
+    fn new() -> std::io::Result<Self> {
+        let pid = std::process::id();
+        let path = std::env::temp_dir().join(format!("flt-buffer-{}.rgba", pid));
+
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)?;
+
+        // Kitty requires path to be base64 encoded
+        let encoded_path = BASE64_STANDARD.encode(path.to_string_lossy().as_bytes());
+
+        Ok(Self {
+            path,
+            file,
+            encoded_path,
+        })
+    }
+
+    fn write_data(&mut self, data: &[u8]) -> std::io::Result<()> {
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.set_len(0)?;
+        self.file.write_all(data)?;
+        self.file.flush()?;
+        Ok(())
+    }
+}
+
+impl Drop for FileBuffer {
+    fn drop(&mut self) {
+        // Attempt to delete the temporary file when we are done
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 impl Drop for TerminalWindow {
@@ -127,6 +174,7 @@ impl TerminalWindow {
             pixels_per_col,
             pixels_per_row,
             device_pixel_ratio,
+            file_buffer: None,
         }
     }
 
@@ -266,44 +314,53 @@ impl TerminalWindow {
         width: usize,
         height: usize,
     ) -> Result<(), std::io::Error> {
+        if buffer.is_empty() {
+            return Ok(());
+        }
+
         let start = Instant::now();
+
+        // Color swap (BGRA -> RGBA)
         if !cfg!(target_os = "macos") {
             for chunk in buffer.chunks_exact_mut(4) {
                 chunk.swap(0, 2);
             }
         }
 
-        let encoded = BASE64_STANDARD.encode(&buffer);
+        // File Buffer Setup
+        if self.file_buffer.is_none() {
+            self.file_buffer = Some(FileBuffer::new()?);
+        }
 
-        // Send graphics command.
+        let fb = self.file_buffer.as_mut().unwrap();
+        fb.write_data(&buffer)?;
+
+        // Send Command
         self.stdout.queue(MoveTo(0, 0))?;
 
-        // Chunk size 4096 is standard for kitty protocol.
-        let chunks: Vec<&[u8]> = encoded.as_bytes().chunks(4096).collect();
-        let chunk_count = chunks.len();
+        // Initialize transfer.
+        // f=32: 32-bit RGBA
+        // s={pixel_width},v={pixel_height}: dimensions
+        // a=T: transmit and display
+        // q=2: quiet mode (no response)
+        // i=1: image ID for overwriting
+        // t=f (File Transport)
+        // Payload is the encoded path
+        let header = format!("\x1b_Gf=32,s={},v={},a=T,q=2,i=1,t=f;", width, height);
+        let payload = &fb.encoded_path;
 
-        let header = format!("\x1b_Gf=32,s={},v={},a=T,q=2,i=1", width, height);
+        self.stdout.queue(Print(header))?;
+        self.stdout.queue(Print(payload))?;
+        self.stdout.queue(Print("\x1b\\"))?;
 
-        for (i, chunk) in chunks.iter().enumerate() {
-            let is_last = i == chunk_count - 1;
-            let m = if is_last { 0 } else { 1 };
-            // For the first chunk, we include the header keys.
-            // For subsequent chunks, we just send m=<val>.
-            // Actually, the keys need to be in the first command.
-            // Payload follows ;
-            if i == 0 {
-                self.stdout.queue(Print(format!("{},m={};", header, m)))?;
-            } else {
-                self.stdout.queue(Print(format!("\x1b_Gi=1,m={};", m)))?;
-            }
-
-            self.stdout.write_all(chunk)?;
-            self.stdout.queue(Print("\x1b\\"))?;
-        }
         self.stdout.flush()?;
 
         {
-            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/tmp/flt_frame_timings.log") {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open("/tmp/flt_frame_timings.log")
+            {
                 writeln!(f, "Frame time: {}ms", start.elapsed().as_millis()).ok();
             }
         }
