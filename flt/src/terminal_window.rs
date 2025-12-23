@@ -359,10 +359,11 @@ impl TerminalWindow {
         // a=T: transmit and display
         // q=2: quiet mode (no response)
         // i=1: image ID for overwriting
+        // p=1 (Constant Placement ID to avoid leaking placements)
         // t=s (Shared Memory)
         // Payload is the encoded name of the NEW SHM segment
         let code = format!(
-            "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,t=s;{}\x1b\\",
+            "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,p=1,t=s;{}\x1b\\",
             width, height, &new_shm.name
         );
         self.stdout.queue(Print(code))?;
