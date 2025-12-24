@@ -47,7 +47,6 @@ pub struct TerminalWindow {
 
 struct SharedMemoryBuffer {
     name: String,
-    raw_name: String,
     // We keep file to keep the FD open (though shm persists until unlinked/closed)
     // and to allow resizing (if we used File methods).
     // But we used libc::shm_open which returns raw fd.
@@ -61,8 +60,8 @@ struct SharedMemoryBuffer {
 impl SharedMemoryBuffer {
     fn new(size: usize, suffix: u64) -> std::io::Result<Self> {
         let pid = std::process::id();
-        let raw_name = format!("/flt_{}_{}", pid, suffix);
-        let c_name = std::ffi::CString::new(raw_name.clone())?;
+        let name = format!("/flt_{}_{}", pid, suffix);
+        let c_name = std::ffi::CString::new(name.clone())?;
 
         // Ensure clean state
         unsafe { shm_unlink(c_name.as_ptr()) };
@@ -81,8 +80,7 @@ impl SharedMemoryBuffer {
         let map = unsafe { MmapMut::map_mut(&file)? };
 
         Ok(Self {
-            name: BASE64_STANDARD.encode(&raw_name),
-            raw_name,
+            name,
             file,
             map: Some(map),
         })
@@ -91,7 +89,7 @@ impl SharedMemoryBuffer {
 
 impl Drop for SharedMemoryBuffer {
     fn drop(&mut self) {
-        if let Ok(c_name) = std::ffi::CString::new(self.raw_name.clone()) {
+        if let Ok(c_name) = std::ffi::CString::new(self.name.clone()) {
             unsafe { shm_unlink(c_name.as_ptr()) };
         }
     }
@@ -364,7 +362,9 @@ impl TerminalWindow {
         // Payload is the encoded name of the NEW SHM segment
         let code = format!(
             "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,p=1,t=s;{}\x1b\\",
-            width, height, &new_shm.name
+            width,
+            height,
+            BASE64_STANDARD.encode(&new_shm.name)
         );
         self.stdout.queue(Print(code))?;
         self.stdout.flush()?;
