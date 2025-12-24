@@ -30,7 +30,17 @@ impl TerminalEmbedder {
                     return Ok(());
                 }
 
-                // TODO(jiahaog): Implement keyboard support.
+                // The following only supports IME text fields.
+                // TODO(jiahaog): Non-IME key support which calls `FlutterEngineSendKeyEvent`.
+                match code {
+                    KeyCode::Char(c) => {
+                        self.engine.send_text_input_char(c).ok();
+                    }
+                    KeyCode::Backspace => {
+                        self.engine.send_text_input_backspace().ok();
+                    }
+                    _ => {}
+                }
                 Ok(())
             }
             crossterm::event::Event::Mouse(MouseEvent {

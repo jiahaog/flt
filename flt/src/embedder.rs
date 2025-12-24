@@ -53,7 +53,8 @@ impl TerminalEmbedder {
         );
 
         let callbacks = {
-            let (sender_a, sender_b, sender_c, sender_d) = (
+            let (sender_a, sender_b, sender_c, sender_d, sender_e) = (
+                main_sender.clone(),
                 main_sender.clone(),
                 main_sender.clone(),
                 main_sender.clone(),
@@ -92,6 +93,13 @@ impl TerminalEmbedder {
                             buffer.to_vec(),
                             width,
                             height,
+                        )))
+                        .unwrap();
+                })),
+                platform_message_callback: Some(Box::new(move |message| {
+                    sender_e
+                        .send(PlatformEvent::EngineEvent(EngineEvent::PlatformMessage(
+                            message,
                         )))
                         .unwrap();
                 })),

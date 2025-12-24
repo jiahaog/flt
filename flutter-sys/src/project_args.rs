@@ -66,7 +66,7 @@ impl FlutterProjectArgs {
             icu_data_path: self.icu_data_path,
             command_line_argc: 0,
             command_line_argv: std::ptr::null(),
-            platform_message_callback: None,
+            platform_message_callback: Some(platform_message_callback),
             vm_snapshot_data: std::ptr::null(),
             vm_snapshot_data_size: 0,
             vm_snapshot_instructions: std::ptr::null(),
@@ -116,4 +116,30 @@ extern "C" fn log_message_callback(
         .log_message_callback
         .as_ref()
         .map(|callback| callback(tag, message));
+}
+
+extern "C" fn platform_message_callback(
+    message: *const sys::FlutterPlatformMessage,
+    user_data: *mut ::std::os::raw::c_void,
+) {
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
+    let message = unsafe { &*message };
+
+    let channel = unsafe { std::ffi::CStr::from_ptr(message.channel) }
+        .to_string_lossy()
+        .into_owned();
+    let data =
+        unsafe { std::slice::from_raw_parts(message.message, message.message_size) }.to_vec();
+
+    user_data
+        .callbacks
+        .platform_message_callback
+        .as_ref()
+        .map(|callback| {
+            callback(crate::PlatformMessage {
+                channel,
+                message: data,
+                response_handle: crate::PlatformMessageResponseHandle::new(message.response_handle),
+            })
+        });
 }

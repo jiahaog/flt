@@ -1,7 +1,8 @@
 use crate::pointer::{FlutterPointerMouseButton, FlutterPointerPhase, FlutterPointerSignalKind};
 use crate::project_args::FlutterProjectArgs;
 use crate::user_data::UserData;
-use crate::{sys, Callbacks, Error, KeyEventType};
+use crate::{sys, Callbacks, Error};
+use std::ffi::CString;
 use std::slice;
 use std::time::{Duration, Instant};
 
@@ -191,29 +192,84 @@ impl FlutterEngine {
         }
     }
 
-    // TODO(jiahaog): Actually implement this.
-    #[allow(unused)]
-    pub fn send_key_event(&self, event_type: KeyEventType, c: char) -> Result<(), Error> {
-        // let assets_path = CString::new("abc").unwrap().into_raw();
+    pub fn send_platform_message(&self, channel: &str, message: &[u8]) -> Result<(), Error> {
+        let channel = CString::new(channel).unwrap();
+        let platform_message = sys::FlutterPlatformMessage {
+            struct_size: std::mem::size_of::<sys::FlutterPlatformMessage>(),
+            channel: channel.as_ptr(),
+            message: message.as_ptr(),
+            message_size: message.len(),
+            response_handle: std::ptr::null_mut(),
+        };
+        let result =
+            unsafe { sys::FlutterEngineSendPlatformMessage(self.get_engine(), &platform_message) };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
+    }
 
-        // let flutter_key_event = sys::FlutterKeyEvent {
-        //     struct_size: std::mem::size_of::<sys::FlutterKeyEvent>(),
-        //     timestamp: self.duration_from_start().as_micros() as f64,
-        //     type_: event_type.into(),
-        //     // KeyI
-        //     physical: 0x0007000c,
-        //     logical: 0x00000000069,
-        //     character: assets_path,
-        //     synthesized: false,
-        // };
+    pub fn send_platform_message_response(
+        &self,
+        handle: crate::PlatformMessageResponseHandle,
+        data: Option<&[u8]>,
+    ) -> Result<(), Error> {
+        if handle.get().is_null() {
+            return Ok(());
+        }
 
-        // let result = unsafe {
-        //     sys::FlutterEngineSendKeyEvent(self.engine, &flutter_key_event, None,
-        // null_mut()) };
-        // match result {
-        //     sys::FlutterEngineResult_kSuccess => Ok(()),
-        //     err => Err(err.into()),
-        // }
+        let result = unsafe {
+            sys::FlutterEngineSendPlatformMessageResponse(
+                self.get_engine(),
+                handle.get(),
+                data.map(|d| d.as_ptr()).unwrap_or(std::ptr::null()),
+                data.map(|d| d.len()).unwrap_or(0),
+            )
+        };
+        match result {
+            sys::FlutterEngineResult_kSuccess => Ok(()),
+            err => Err(err.into()),
+        }
+    }
+
+    fn sync_ime_state(&self, client_id: i32, text: &str) -> Result<(), Error> {
+        let payload = serde_json::json!({
+            "method": "TextInputClient.updateEditingState",
+            "args": [
+                client_id,
+                {
+                    "text": text,
+                    "selectionBase": text.chars().count() as i32,
+                    "selectionExtent": text.chars().count() as i32,
+                    "composingBase": -1,
+                    "composingExtent": -1
+                }
+            ]
+        });
+        self.send_platform_message("flutter/textinput", payload.to_string().as_bytes())
+    }
+
+    pub fn send_text_input_char(&self, c: char) -> Result<(), Error> {
+        let mut state_guard = crate::text_input::IME_STATE.lock().unwrap();
+        if let Some(state) = state_guard.as_mut() {
+            state.text.push(c);
+            let id = state.client_id;
+            let text = state.text.clone();
+            drop(state_guard);
+            self.sync_ime_state(id, &text)?;
+        }
+        Ok(())
+    }
+
+    pub fn send_text_input_backspace(&self) -> Result<(), Error> {
+        let mut state_guard = crate::text_input::IME_STATE.lock().unwrap();
+        if let Some(state) = state_guard.as_mut() {
+            state.text.pop();
+            let id = state.client_id;
+            let text = state.text.clone();
+            drop(state_guard);
+            self.sync_ime_state(id, &text)?;
+        }
         Ok(())
     }
 

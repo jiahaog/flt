@@ -16,6 +16,7 @@ pub(crate) enum EngineEvent {
     Draw(Vec<u8>, usize, usize),
     EngineTask(EngineTask),
     LogMessage { tag: String, message: String },
+    PlatformMessage(flutter_sys::PlatformMessage),
 }
 
 impl TerminalEmbedder {
@@ -56,6 +57,14 @@ impl TerminalEmbedder {
                     PlatformEvent::EngineEvent(EngineEvent::LogMessage { tag, message }) => {
                         // TODO(jiahaog): Print to the main terminal.
                         self.terminal_window.log(format!("{tag}: {message}"));
+                    }
+                    PlatformEvent::EngineEvent(EngineEvent::PlatformMessage(message)) => {
+                        if !flutter_sys::text_input::handle_message(&message) {
+                            self.engine.send_platform_message_response(
+                                message.response_handle,
+                                None,
+                            )?;
+                        }
                     }
                     PlatformEvent::TerminalEvent(event) => {
                         self.handle_terminal_event(event)?;
