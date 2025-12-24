@@ -224,66 +224,70 @@ impl TerminalWindow {
             return Ok(());
         }
 
-        if self.kitty_mode {
-            return self.draw_kitty(buffer, width, height);
-        }
-
         let start_instant = Instant::now();
 
-        let (cell_cols, cell_rows) = terminal::size().unwrap();
-        let cell_rows = cell_rows as usize - LOGGING_WINDOW_HEIGHT;
-        let cell_cols = cell_cols as usize;
+        if self.kitty_mode {
+            self.draw_kitty(buffer, width, height)?;
+        } else {
+            // TODO(jiahaog): Put this into a function called `draw_ansi`.
 
-        let mut lines = Vec::with_capacity(cell_rows);
+            let (cell_cols, cell_rows) = terminal::size().unwrap();
+            let cell_rows = cell_rows as usize - LOGGING_WINDOW_HEIGHT;
+            let cell_cols = cell_cols as usize;
 
-        for y in (0..cell_rows).step_by(1) {
-            let mut row_cells = Vec::with_capacity(cell_cols);
+            let mut lines = Vec::with_capacity(cell_rows);
 
-            for x in 0..cell_cols {
-                let pixel_x = x_offset + x as isize;
-                let pixel_y_top = y_offset + (y * 2) as isize;
-                let pixel_y_bot = y_offset + (y * 2 + 1) as isize;
+            for y in (0..cell_rows).step_by(1) {
+                let mut row_cells = Vec::with_capacity(cell_cols);
 
-                let top_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_top);
-                let bot_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_bot);
+                for x in 0..cell_cols {
+                    let pixel_x = x_offset + x as isize;
+                    let pixel_y_top = y_offset + (y * 2) as isize;
+                    let pixel_y_bot = y_offset + (y * 2 + 1) as isize;
 
-                let semantics = None;
+                    let top_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_top);
+                    let bot_pixel = get_pixel(&buffer, width, height, pixel_x, pixel_y_bot);
 
-                row_cells.push(TerminalCell {
-                    top: to_color_from_bytes(top_pixel),
-                    bottom: to_color_from_bytes(bot_pixel),
-                    semantics,
-                });
-            }
-            lines.push(row_cells);
-        }
+                    let semantics = None;
 
-        if self.lines.len() != lines.len() {
-            self.lines = vec![vec![]; lines.len()];
-        }
-
-        for (y, (prev, current)) in zip(&self.lines, &lines).enumerate() {
-            for (
-                x,
-                current_cell @ TerminalCell {
-                    top,
-                    bottom,
-                    semantics: _,
-                },
-            ) in current.into_iter().enumerate()
-            {
-                if prev
-                    .get(x)
-                    .filter(|prev_cell| prev_cell == &current_cell)
-                    .is_some()
-                {
-                    continue;
+                    row_cells.push(TerminalCell {
+                        top: to_color_from_bytes(top_pixel),
+                        bottom: to_color_from_bytes(bot_pixel),
+                        semantics,
+                    });
                 }
-                self.stdout.queue(MoveTo(x as u16, y as u16))?;
-                self.stdout.queue(PrintStyledContent(
-                    BLOCK_UPPER.to_string().with(*top).on(*bottom),
-                ))?;
+                lines.push(row_cells);
             }
+
+            if self.lines.len() != lines.len() {
+                self.lines = vec![vec![]; lines.len()];
+            }
+
+            for (y, (prev, current)) in zip(&self.lines, &lines).enumerate() {
+                for (
+                    x,
+                    current_cell @ TerminalCell {
+                        top,
+                        bottom,
+                        semantics: _,
+                    },
+                ) in current.into_iter().enumerate()
+                {
+                    if prev
+                        .get(x)
+                        .filter(|prev_cell| prev_cell == &current_cell)
+                        .is_some()
+                    {
+                        continue;
+                    }
+                    self.stdout.queue(MoveTo(x as u16, y as u16))?;
+                    self.stdout.queue(PrintStyledContent(
+                        BLOCK_UPPER.to_string().with(*top).on(*bottom),
+                    ))?;
+                }
+            }
+
+            self.lines = lines;
         }
 
         {
@@ -304,7 +308,9 @@ impl TerminalWindow {
 
             let draw_duration = Instant::now().duration_since(start_instant);
 
-            let hint_and_fps = format!("{HELP_HINT} [{}]", draw_duration.as_millis());
+            let hint_and_fps = format!("{HELP_HINT} [{}ms]", draw_duration.as_millis());
+            let cell_cols = terminal::size().unwrap().0 as usize;
+
             self.stdout.queue(MoveTo(
                 (cell_cols - hint_and_fps.len()) as u16,
                 (terminal_height - 1) as u16,
@@ -313,10 +319,10 @@ impl TerminalWindow {
         }
 
         self.stdout.flush()?;
-        self.lines = lines;
 
         Ok(())
     }
+
     fn draw_kitty(
         &mut self,
         mut buffer: Vec<u8>,
@@ -326,8 +332,6 @@ impl TerminalWindow {
         if buffer.is_empty() {
             return Ok(());
         }
-
-        let start = Instant::now();
 
         // Color swap (BGRA -> RGBA)
         if !cfg!(target_os = "macos") {
@@ -373,15 +377,6 @@ impl TerminalWindow {
         // This drops the previous one (if any), which triggers shm_unlink.
         self.shm_buffer = Some(new_shm);
 
-        {
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open("/tmp/flt_frame_timings.log")
-            {
-                let _ = writeln!(f, "Frame time: {}ms", start.elapsed().as_millis());
-            }
-        }
         Ok(())
     }
 
