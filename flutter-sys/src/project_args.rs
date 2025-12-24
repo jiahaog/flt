@@ -38,6 +38,7 @@ impl FlutterProjectArgs {
             runs_task_on_current_thread_callback: Some(runs_task_on_current_thread_callback),
             post_task_callback: Some(post_platform_task_callback),
             identifier: 0,
+            destruction_callback: None,
         });
 
         let custom_task_runners = Box::new(sys::FlutterCustomTaskRunners {
@@ -45,6 +46,7 @@ impl FlutterProjectArgs {
             platform_task_runner: &*platform_task_runner,
             render_task_runner: std::ptr::null(),
             thread_priority_setter: None,
+            ui_task_runner: std::ptr::null(),
         });
 
         Self {
@@ -93,6 +95,9 @@ impl FlutterProjectArgs {
             on_pre_engine_restart_callback: None,
             update_semantics_callback: Some(update_semantics_callback),
             update_semantics_callback2: None,
+            channel_update_callback: None,
+            engine_id: 0,
+            view_focus_change_request_callback: None,
         }
     }
 }
