@@ -91,6 +91,11 @@ fn main() {
             "cargo:rustc-link-search=framework={}",
             out_dir.to_str().unwrap()
         );
+        // Needed for `cargo test`.
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}",
+            out_dir.to_str().unwrap()
+        );
     } else {
         // Matches `libflutter_engine.so`.
         println!("cargo:rustc-link-lib=flutter_engine");
