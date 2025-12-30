@@ -43,6 +43,7 @@ pub struct TerminalWindow {
     device_pixel_ratio: f64,
     shm_buffer: Option<SharedMemoryBuffer>,
     frame_count: u64,
+    logs_dirty: bool,
 }
 
 struct SharedMemoryBuffer {
@@ -184,6 +185,7 @@ impl TerminalWindow {
             device_pixel_ratio,
             shm_buffer: None,
             frame_count: 0,
+            logs_dirty: true,
         }
     }
 
@@ -224,6 +226,7 @@ impl TerminalWindow {
             return Ok(());
         }
 
+        let terminal_size = terminal::size()?;
         let start_instant = Instant::now();
 
         if self.kitty_mode {
@@ -231,7 +234,7 @@ impl TerminalWindow {
         } else {
             // TODO(jiahaog): Put this into a function called `draw_ansi`.
 
-            let (cell_cols, cell_rows) = terminal::size().unwrap();
+            let (cell_cols, cell_rows) = terminal_size;
             let cell_rows = cell_rows as usize - LOGGING_WINDOW_HEIGHT;
             let cell_cols = cell_cols as usize;
 
@@ -293,29 +296,39 @@ impl TerminalWindow {
         {
             assert!(self.logs.len() <= LOGGING_WINDOW_HEIGHT);
 
-            let (_, terminal_height) = terminal::size()?;
+            let (cols, rows) = terminal_size;
+            let cols = cols as usize;
+            let rows = rows as usize;
 
-            for i in 0..LOGGING_WINDOW_HEIGHT {
-                let y = terminal_height as usize - LOGGING_WINDOW_HEIGHT + i;
+            if rows >= LOGGING_WINDOW_HEIGHT {
+                for i in 0..LOGGING_WINDOW_HEIGHT {
+                    let is_last_line = i == LOGGING_WINDOW_HEIGHT - 1;
+                    if !self.logs_dirty && !is_last_line {
+                        continue;
+                    }
 
-                self.stdout.queue(MoveTo(0, y as u16))?;
-                self.stdout
-                    .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
-                if let Some(line) = self.logs.get(i) {
-                    self.stdout.queue(Print(line))?;
+                    let y = rows - LOGGING_WINDOW_HEIGHT + i;
+                    self.stdout.queue(MoveTo(0, y as u16))?;
+                    self.stdout
+                        .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
+
+                    if let Some(line) = self.logs.get(i) {
+                        self.stdout.queue(Print(line))?;
+                    }
+
+                    if is_last_line {
+                        let draw_duration = Instant::now().duration_since(start_instant);
+                        let hint_and_fps = format!("{HELP_HINT} [{}ms]", draw_duration.as_millis());
+                        self.stdout.queue(MoveTo(
+                            (cols.saturating_sub(hint_and_fps.len())) as u16,
+                            y as u16,
+                        ))?;
+                        self.stdout.queue(Print(hint_and_fps))?;
+                    }
                 }
             }
 
-            let draw_duration = Instant::now().duration_since(start_instant);
-
-            let hint_and_fps = format!("{HELP_HINT} [{}ms]", draw_duration.as_millis());
-            let cell_cols = terminal::size().unwrap().0 as usize;
-
-            self.stdout.queue(MoveTo(
-                (cell_cols - hint_and_fps.len()) as u16,
-                (terminal_height - 1) as u16,
-            ))?;
-            self.stdout.queue(Print(hint_and_fps))?;
+            self.logs_dirty = false;
         }
 
         self.stdout.flush()?;
@@ -388,6 +401,7 @@ impl TerminalWindow {
             self.logs.pop_front();
         }
         self.logs.push_back(message);
+        self.logs_dirty = true;
     }
 
     pub(crate) fn toggle_show_help(&mut self) -> Result<(), std::io::Error> {
@@ -431,6 +445,7 @@ impl TerminalWindow {
 
     pub(crate) fn mark_dirty(&mut self) {
         self.lines.clear();
+        self.logs_dirty = true;
     }
 }
 

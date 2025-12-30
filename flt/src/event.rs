@@ -60,10 +60,8 @@ impl TerminalEmbedder {
                     }
                     PlatformEvent::EngineEvent(EngineEvent::PlatformMessage(message)) => {
                         if !flutter_sys::text_input::handle_message(&message) {
-                            self.engine.send_platform_message_response(
-                                message.response_handle,
-                                None,
-                            )?;
+                            self.engine
+                                .send_platform_message_response(message.response_handle, None)?;
                         }
                     }
                     PlatformEvent::TerminalEvent(event) => {
