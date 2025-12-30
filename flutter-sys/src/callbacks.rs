@@ -28,4 +28,7 @@ pub struct Callbacks {
     pub update_semantics_callback: Option<Box<dyn Fn(Vec<SemanticsUpdate>) -> ()>>,
     pub draw_callback: Option<Box<dyn Fn(&[u8], usize, usize) -> ()>>,
     pub platform_message_callback: Option<Box<dyn Fn(PlatformMessage) -> ()>>,
+    pub get_next_drawable_callback:
+        Option<Box<dyn Fn(sys::FlutterFrameInfo) -> sys::FlutterMetalTexture>>,
+    pub present_drawable_callback: Option<Box<dyn Fn(&sys::FlutterMetalTexture) -> bool>>,
 }

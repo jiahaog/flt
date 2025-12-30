@@ -6,7 +6,7 @@ mod pixel;
 mod pointer;
 mod project_args;
 mod semantics;
-mod sys;
+pub mod sys;
 mod task;
 pub mod text_input;
 mod user_data;

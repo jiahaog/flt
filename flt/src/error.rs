@@ -4,6 +4,7 @@ use std::fmt::Display;
 pub enum Error {
     EngineError(flutter_sys::Error),
     TerminalError(std::io::Error),
+    GenericError(String),
 }
 
 impl From<flutter_sys::Error> for Error {
@@ -29,6 +30,7 @@ impl std::error::Error for Error {
         Some(match self {
             Error::EngineError(e) => e,
             Error::TerminalError(e) => e,
+            Error::GenericError(_) => return None,
         })
     }
 }

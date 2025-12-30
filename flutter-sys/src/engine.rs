@@ -29,16 +29,39 @@ impl Drop for FlutterEngine {
 }
 
 impl FlutterEngine {
-    pub fn new(assets_dir: &str, icu_data_path: &str, callbacks: Callbacks) -> Result<Self, Error> {
-        let renderer_config = sys::FlutterRendererConfig {
-            type_: sys::FlutterRendererType_kSoftware,
-            __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
-                software: sys::FlutterSoftwareRendererConfig {
-                    struct_size: std::mem::size_of::<sys::FlutterSoftwareRendererConfig>(),
-                    surface_present_callback: Some(software_surface_present_callback),
-                },
-            },
-        };
+    pub fn new(
+        assets_dir: &str,
+        icu_data_path: &str,
+        callbacks: Callbacks,
+        metal_device: Option<*mut std::ffi::c_void>,
+        metal_command_queue: Option<*mut std::ffi::c_void>,
+    ) -> Result<Self, Error> {
+        let renderer_config =
+            if let (Some(device), Some(queue)) = (metal_device, metal_command_queue) {
+                sys::FlutterRendererConfig {
+                    type_: sys::FlutterRendererType_kMetal,
+                    __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
+                        metal: sys::FlutterMetalRendererConfig {
+                            struct_size: std::mem::size_of::<sys::FlutterMetalRendererConfig>(),
+                            device,
+                            present_command_queue: queue,
+                            get_next_drawable_callback: Some(metal_get_next_drawable_callback),
+                            present_drawable_callback: Some(metal_present_drawable_callback),
+                            external_texture_frame_callback: None,
+                        },
+                    },
+                }
+            } else {
+                sys::FlutterRendererConfig {
+                    type_: sys::FlutterRendererType_kSoftware,
+                    __bindgen_anon_1: sys::FlutterRendererConfig__bindgen_ty_1 {
+                        software: sys::FlutterSoftwareRendererConfig {
+                            struct_size: std::mem::size_of::<sys::FlutterSoftwareRendererConfig>(),
+                            surface_present_callback: Some(software_surface_present_callback),
+                        },
+                    },
+                }
+            };
 
         let mut user_data = Box::new(UserData::new(callbacks));
 
@@ -316,4 +339,39 @@ extern "C" fn software_surface_present_callback(
         .map(|callback| callback(allocation, width, height));
 
     return true;
+}
+
+extern "C" fn metal_get_next_drawable_callback(
+    user_data: *mut std::ffi::c_void,
+    frame_info: *const sys::FlutterFrameInfo,
+) -> sys::FlutterMetalTexture {
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
+    let frame_info = unsafe { *frame_info };
+    user_data
+        .callbacks
+        .get_next_drawable_callback
+        .as_ref()
+        .map_or_else(
+            || sys::FlutterMetalTexture {
+                struct_size: std::mem::size_of::<sys::FlutterMetalTexture>(),
+                texture_id: 0,
+                texture: std::ptr::null(),
+                user_data: std::ptr::null_mut(),
+                destruction_callback: None,
+            },
+            |cb| cb(frame_info),
+        )
+}
+
+extern "C" fn metal_present_drawable_callback(
+    user_data: *mut std::ffi::c_void,
+    texture: *const sys::FlutterMetalTexture,
+) -> bool {
+    let user_data: &UserData = unsafe { &mut *(user_data as *mut UserData) };
+    let texture = unsafe { &*texture };
+    user_data
+        .callbacks
+        .present_drawable_callback
+        .as_ref()
+        .map_or(false, |cb| cb(texture))
 }
