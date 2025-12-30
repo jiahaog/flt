@@ -98,6 +98,37 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               ),
             );
           }
+          if (index == 3) {
+            return Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    color: const Color.fromARGB(255, 255, 0, 0),
+                    alignment: Alignment.center,
+                    child: const Text('red', style: TextStyle(color: Colors.white)),
+                  ),
+                  Container(
+                    width: 60,
+                    height: 60,
+                    color: const Color.fromARGB(255, 0, 255, 0),
+                    alignment: Alignment.center,
+                    child: const Text('green', style: TextStyle(color: Colors.black)),
+                  ),
+                  Container(
+                    width: 60,
+                    height: 60,
+                    color: const Color.fromARGB(255, 0, 0, 255),
+                    alignment: Alignment.center,
+                    child: const Text('blue', style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            );
+          }
           return ListTile(
             title: Text(items[index]),
           );
