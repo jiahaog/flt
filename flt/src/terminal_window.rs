@@ -368,19 +368,12 @@ impl TerminalWindow {
 
     fn draw_kitty(
         &mut self,
-        mut buffer: Vec<u8>,
+        buffer: Vec<u8>,
         width: usize,
         height: usize,
     ) -> Result<(), std::io::Error> {
         if buffer.is_empty() {
             return Ok(());
-        }
-
-        // Color swap (BGRA -> RGBA)
-        if !cfg!(target_os = "macos") {
-            for chunk in buffer.chunks_exact_mut(4) {
-                chunk.swap(0, 2);
-            }
         }
 
         // Generate unique SHM segment for this frame

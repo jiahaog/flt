@@ -8,7 +8,7 @@ use flutter_sys::{sys, Callbacks, FlutterEngine};
 #[cfg(target_os = "macos")]
 use metal::foreign_types::ForeignType;
 #[cfg(target_os = "macos")]
-use metal::{Device, MTLPixelFormat, MTLRegion, MTLTextureUsage, TextureDescriptor};
+use metal::{Device, MTLPixelFormat, MTLTextureUsage, TextureDescriptor};
 use std::ffi::c_void;
 use std::mem;
 use std::sync::mpsc::{channel, Receiver};
@@ -125,33 +125,91 @@ impl TerminalEmbedder {
             });
 
         // Initialize Callbacks and Renderer resources based on platform
+
         #[cfg(target_os = "macos")]
         let (callbacks, device_ptr, queue_ptr) = {
+            const SHADERS_SOURCE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+// Why this shader exists:
+// 1. The Kitty Graphics Protocol (f=32) strictly requires RGBA pixel data.
+// 2. Flutter's Metal backend (via Skia) is hardcoded to output BGRA on macOS.
+//    See: flutter/engine/src/flutter/shell/gpu/gpu_surface_metal_skia.mm
+//    specifically the usage of `kBGRA_8888_SkColorType`.
+// 3. We cannot change the texture format to RGBA because Skia will fail to create a surface.
+// 4. Swapping BGRA -> RGBA on the CPU (iterating over every pixel) is extremely slow.
+//
+// Solution: Use this Compute Shader to efficiently read the BGRA texture and write RGBA bytes
+// to a shared buffer on the GPU.
+kernel void copy_texture_to_buffer(texture2d<float, access::read> inputTexture [[texture(0)]],
+                                    device uchar4 *outputBuffer [[buffer(0)]],
+                                    uint2 gid [[thread_position_in_grid]]) {
+
+    if (gid.x >= inputTexture.get_width() || gid.y >= inputTexture.get_height()) {
+        return;
+    }
+
+    float4 color = inputTexture.read(gid);
+    uint index = gid.y * inputTexture.get_width() + gid.x;
+    outputBuffer[index] = uchar4(color.r * 255.0, color.g * 255.0, color.b * 255.0, color.a * 255.0);
+}
+                    "#;
+
             // Try to initialize Metal
             if let Some(device) = Device::system_default() {
                 let command_queue = device.new_command_queue();
+
                 let device = Arc::new(device);
+
+                // Compile Shader
+
+                let library = device
+                    .new_library_with_source(SHADERS_SOURCE, &metal::CompileOptions::new())
+                    .unwrap();
+                let function = library
+                    .get_function("copy_texture_to_buffer", None)
+                    .unwrap();
+                let compute_pipeline = device
+                    .new_compute_pipeline_state_with_function(&function)
+                    .unwrap();
+
+                let compute_pipeline = Arc::new(compute_pipeline);
+
                 let current_texture = Arc::new(Mutex::new(None::<metal::Texture>));
 
+                // Persistent output buffer (Shared memory)
+                let output_buffer = Arc::new(Mutex::new(None::<metal::Buffer>));
+
                 let device_clone = device.clone();
+                let device_for_present = device.clone();
                 let queue_clone = command_queue.clone();
                 let texture_clone = current_texture.clone();
                 let present_texture_clone = current_texture.clone();
+                let output_buffer_clone = output_buffer.clone();
+                let compute_pipeline_clone = compute_pipeline.clone();
 
                 let callbacks = Callbacks {
                     post_platform_task_callback: Some(post_platform_task_callback),
+
                     platform_task_runs_task_on_current_thread_callback: Some(
                         platform_task_runs_task_on_current_thread_callback,
                     ),
+
                     log_message_callback: Some(log_message_callback),
+
                     update_semantics_callback: Some(update_semantics_callback),
+
                     platform_message_callback: Some(platform_message_callback),
+
                     draw_callback: None, // Metal doesn't use this
+
                     get_next_drawable_callback: Some(Box::new(move |frame_info| {
                         let width = frame_info.size.width as u64;
                         let height = frame_info.size.height as u64;
 
                         let mut tex_guard = texture_clone.lock().unwrap();
+
                         let needs_new_texture = if let Some(tex) = &*tex_guard {
                             tex.width() != width || tex.height() != height
                         } else {
@@ -166,7 +224,7 @@ impl TerminalEmbedder {
                             descriptor.set_usage(
                                 MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead,
                             );
-                            descriptor.set_storage_mode(metal::MTLStorageMode::Managed);
+                            descriptor.set_storage_mode(metal::MTLStorageMode::Private);
 
                             let texture = device_clone.new_texture(&descriptor);
                             *tex_guard = Some(texture);
@@ -186,46 +244,79 @@ impl TerminalEmbedder {
                     present_drawable_callback: Some(Box::new(move |_texture_wrapper| {
                         let tex_guard = present_texture_clone.lock().unwrap();
                         if let Some(texture) = &*tex_guard {
-                            let width = texture.width() as usize;
-                            let height = texture.height() as usize;
-                            let row_bytes = width * 4;
-                            let length = row_bytes * height;
+                            let width = texture.width();
+                            let height = texture.height();
+                            let length = (width * height * 4) as u64;
+                            let command_buffer = queue_clone.new_command_buffer();
 
-                            // Synchronize the texture for CPU access.
+                            // Setup Output Buffer
+
+                            let mut buf_guard = output_buffer_clone.lock().unwrap();
+
+                            if buf_guard
+                                .as_ref()
+                                .map(|b| b.length() != length)
+                                .unwrap_or(true)
+                            {
+                                let new_buf = device_for_present.new_buffer(
+                                    length,
+                                    metal::MTLResourceOptions::StorageModeShared,
+                                );
+                                *buf_guard = Some(new_buf);
+                            }
+
+                            let buffer = buf_guard.as_ref().unwrap();
+
+                            // Encode Compute Command
+
+                            let encoder = command_buffer.new_compute_command_encoder();
+                            encoder.set_compute_pipeline_state(&compute_pipeline_clone);
+                            encoder.set_texture(0, Some(texture));
+                            encoder.set_buffer(0, Some(buffer), 0);
+
+                            let w = compute_pipeline_clone.thread_execution_width();
+                            let h = compute_pipeline_clone.max_total_threads_per_threadgroup() / w;
+
+                            let threads_per_group = metal::MTLSize::new(w, h, 1);
+                            let threads_per_grid = metal::MTLSize::new(width, height, 1);
+
+                            encoder.dispatch_threads(threads_per_grid, threads_per_group);
+                            encoder.end_encoding();
+
+                            // Synchronize the buffer for CPU access.
                             //
-                            // On macOS with `MTLStorageModeManaged`, the texture data exists in two places:
-                            // video memory (VRAM) for the GPU and system memory (RAM) for the CPU.
-                            // When Flutter renders, it writes to VRAM. To read these pixels back to the CPU
-                            // (for our terminal display), we must explicitly trigger a synchronization.
+                            // On macOS with `MTLStorageModeManaged` (Intel), the buffer data exists in two places:
+                            // VRAM (GPU) and RAM (CPU). The Compute Shader writes to VRAM.
+                            // To read these pixels back to the CPU, we must explicitly trigger a synchronization.
                             //
                             // 1. `synchronize_resource`: Enqueues a blit command to copy the latest VRAM content
                             //    to the CPU-accessible RAM buffer.
                             // 2. `wait_until_completed`: Blocks the current thread until the GPU has finished
-                            //    processing all commands, ensuring the data in RAM is fully updated and valid
-                            //    before we attempt to read it with `get_bytes`.
+                            //    processing all commands, ensuring the data in RAM is fully updated and valid.
                             //
-                            // Without this synchronization, `get_bytes` would read stale or incomplete data from
-                            // system RAM, leading to severe graphical artifacts, flickering (seeing the previous frame),
-                            // or screen tearing.
-                            let command_buffer = queue_clone.new_command_buffer();
-                            let blit_encoder = command_buffer.new_blit_command_encoder();
-                            blit_encoder.synchronize_resource(texture);
-                            blit_encoder.end_encoding();
+                            // For `MTLStorageModeShared` (Apple Silicon), this synchronization is implicit or
+                            // efficient, but the command structure remains correct for compatibility.
+                            if buffer.storage_mode() == metal::MTLStorageMode::Managed {
+                                let blit = command_buffer.new_blit_command_encoder();
+                                blit.synchronize_resource(buffer);
+                                blit.end_encoding();
+                            }
 
                             command_buffer.commit();
                             command_buffer.wait_until_completed();
 
-                            let mut buffer = vec![0u8; length];
-                            texture.get_bytes(
-                                buffer.as_mut_ptr() as *mut c_void,
-                                row_bytes as u64,
-                                MTLRegion::new_2d(0, 0, width as u64, height as u64),
-                                0,
-                            );
+                            // Read Data
+                            let ptr = buffer.contents() as *const u8;
+
+                            // Create a copy to send
+                            let data = unsafe { std::slice::from_raw_parts(ptr, length as usize) }
+                                .to_vec();
 
                             sender_d
                                 .send(PlatformEvent::EngineEvent(EngineEvent::Draw(
-                                    buffer, width, height,
+                                    data,
+                                    width as usize,
+                                    height as usize,
                                 )))
                                 .unwrap();
                             true
