@@ -194,6 +194,36 @@ impl TerminalWindow {
     }
 
     pub(crate) fn size(&self) -> (usize, usize) {
+        if self.kitty_mode {
+            // In kitty mode, we need precise pixel dimensions to properly align the image
+            // with the terminal grid. Standard `terminal::size()` only gives character dimensions.
+            if let Ok(terminal::WindowSize {
+                width: w_px,
+                height: h_px,
+                rows,
+                columns: _,
+            }) = window_size()
+            {
+                if w_px > 0 && h_px > 0 && rows > 0 {
+                    let rows = rows as usize;
+                    let h_px = h_px as usize;
+                    let w_px = w_px as usize;
+
+                    // Reserve lines for logs.
+                    let height_rows = rows.saturating_sub(LOGGING_WINDOW_HEIGHT);
+
+                    // Calculate cell height based on the assumption that terminals
+                    // use uniform integer cell heights and leftover pixels are padding.
+                    // This is critical to avoid the image slightly overlapping with the
+                    // logging area or the next command prompt due to rounding errors.
+                    let cell_height = h_px / rows;
+                    let height_px = cell_height * height_rows;
+
+                    return (w_px, height_px);
+                }
+            }
+        }
+
         let (width, height) = terminal::size().unwrap();
         let (width, height) = (width as usize, height as usize);
 
