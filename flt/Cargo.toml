@@ -12,4 +12,6 @@ crossterm = "0.27.0"
 flutter-sys = { path = "../flutter-sys" }
 libc = "0.2.178"
 memmap2 = "0.9.9"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.26.0"
