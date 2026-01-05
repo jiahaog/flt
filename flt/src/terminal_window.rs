@@ -99,6 +99,15 @@ impl Drop for SharedMemoryBuffer {
 impl Drop for TerminalWindow {
     fn drop(&mut self) {
         if !self.simple_output {
+            if self.kitty_mode {
+                // On iTerm2, kitty graphics need to be explicitly cleared, otherwise the last frame will persist on the screen.
+                // \x1b_G: Start of Kitty graphics command
+                // a=d: Action = delete
+                // d=a: Delete = all
+                // \x1b\\: String terminator
+                let _ = self.stdout.execute(Print("\x1b_Ga=d,d=a\x1b\\"));
+            }
+
             self.stdout.execute(DisableMouseCapture).unwrap();
             disable_raw_mode().unwrap();
 
