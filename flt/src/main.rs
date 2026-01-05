@@ -39,6 +39,10 @@ struct Args {
     /// Disables the kitty graphics protocol even if supported.
     #[arg(long)]
     no_kitty: bool,
+
+    /// Disables GPU rendering (Metal) and forces software rendering.
+    #[arg(long)]
+    no_gpu: bool,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -52,6 +56,7 @@ fn main() -> Result<(), flt::Error> {
         args.log_terminal_events,
         args.debug_semantics,
         args.no_kitty,
+        args.no_gpu,
     )?;
 
     embedder.run_event_loop()?;

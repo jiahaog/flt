@@ -48,6 +48,7 @@ impl TerminalEmbedder {
         log_events: bool,
         debug_semantics: bool,
         disable_kitty: bool,
+        disable_gpu: bool,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
 
@@ -156,8 +157,14 @@ kernel void copy_texture_to_buffer(texture2d<float, access::read> inputTexture [
 }
                     "#;
 
+            let device = if !disable_gpu {
+                Device::system_default()
+            } else {
+                None
+            };
+
             // Try to initialize Metal
-            if let Some(device) = Device::system_default() {
+            if let Some(device) = device {
                 let command_queue = device.new_command_queue();
 
                 let device = Arc::new(device);
