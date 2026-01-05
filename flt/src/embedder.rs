@@ -47,7 +47,7 @@ impl TerminalEmbedder {
         alternate_screen: bool,
         log_events: bool,
         debug_semantics: bool,
-        kitty_mode: bool,
+        disable_kitty: bool,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
 
@@ -55,7 +55,7 @@ impl TerminalEmbedder {
             simple_output,
             alternate_screen,
             log_events,
-            kitty_mode,
+            disable_kitty,
             main_sender.clone(),
         );
 

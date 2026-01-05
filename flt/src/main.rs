@@ -36,9 +36,9 @@ struct Args {
     #[arg(long)]
     log_terminal_events: bool,
 
-    /// Uses the kitty graphics protocol to render the screen.
+    /// Disables the kitty graphics protocol even if supported.
     #[arg(long)]
-    kitty: bool,
+    no_kitty: bool,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -51,7 +51,7 @@ fn main() -> Result<(), flt::Error> {
         !args.no_alt_screen,
         args.log_terminal_events,
         args.debug_semantics,
-        args.kitty,
+        args.no_kitty,
     )?;
 
     embedder.run_event_loop()?;

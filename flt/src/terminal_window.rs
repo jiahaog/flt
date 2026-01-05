@@ -128,7 +128,7 @@ impl TerminalWindow {
         simple_output: bool,
         alternate_screen: bool,
         log_events: bool,
-        kitty_mode: bool,
+        disable_kitty: bool,
         event_sender: Sender<PlatformEvent>,
     ) -> Self {
         let mut stdout = stdout();
@@ -145,6 +145,12 @@ impl TerminalWindow {
             enable_raw_mode().unwrap();
             stdout.execute(EnableMouseCapture).unwrap();
         }
+
+        let kitty_mode = if !simple_output && !disable_kitty {
+            crate::feature::kitty_graphics_supported(&mut stdout)
+        } else {
+            false
+        };
 
         let (pixels_per_col, pixels_per_row) = if kitty_mode {
             match window_size() {
