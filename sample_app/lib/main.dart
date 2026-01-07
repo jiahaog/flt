@@ -1,6 +1,22 @@
+import 'dart:io';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-void main() => runApp(const MyApp());
+void main() {
+  // Test for whether logging affects rendering.
+  Timer.periodic(const Duration(seconds: 1), (_) {
+    // TODO(jiahago): On iterm2, the kitty rendering jitters when this is printed.
+    stdout.writeln('test stdout from app');
+
+    // These are ok.
+    // ignore: avoid_print
+    print('test print from app');
+    stderr.writeln('test stderr from app');
+  });
+
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -109,21 +125,24 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     height: 60,
                     color: const Color.fromARGB(255, 255, 0, 0),
                     alignment: Alignment.center,
-                    child: const Text('red', style: TextStyle(color: Colors.white)),
+                    child: const Text('red',
+                        style: TextStyle(color: Colors.white)),
                   ),
                   Container(
                     width: 60,
                     height: 60,
                     color: const Color.fromARGB(255, 0, 255, 0),
                     alignment: Alignment.center,
-                    child: const Text('green', style: TextStyle(color: Colors.black)),
+                    child: const Text('green',
+                        style: TextStyle(color: Colors.black)),
                   ),
                   Container(
                     width: 60,
                     height: 60,
                     color: const Color.fromARGB(255, 0, 0, 255),
                     alignment: Alignment.center,
-                    child: const Text('blue', style: TextStyle(color: Colors.white)),
+                    child: const Text('blue',
+                        style: TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
