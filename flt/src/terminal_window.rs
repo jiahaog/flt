@@ -413,10 +413,12 @@ impl TerminalWindow {
         // q=2: quiet mode (no response)
         // i=1: image ID for overwriting
         // p=1 (Constant Placement ID to avoid leaking placements)
+        // z=1: z-index (positive = above text)
+        // C=1: do not move cursor
         // t=s (Shared Memory)
         // Payload is the encoded name of the NEW SHM segment
         let code = format!(
-            "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,p=1,t=s;{}\x1b\\",
+            "\x1b_Gf=32,s={},v={},a=T,q=2,i=1,p=1,z=1,C=1,t=s;{}\x1b\\",
             width,
             height,
             BASE64_STANDARD.encode(&new_shm.name)
