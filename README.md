@@ -41,6 +41,34 @@ cargo run
 cargo run -- <path to the root of your flutter project>
 ```
 
+### Usage with `flutter run` (Custom Device)
+
+You can register the terminal embedder as a [Custom Device](https://github.com/flutter/flutter/blob/master/docs/tool/Using-custom-embedders-with-the-Flutter-CLI.md#the-custom-devices-config-file) to use it directly with the `flutter` tool (supporting hot reload, hot restart etc.).
+
+1.  Enable Custom Devices:
+
+    ```sh
+    flutter config --enable-custom-devices
+    ```
+
+2.  Build the Embedder:
+
+    ```sh
+    cargo build --release
+    ```
+
+3.  Install Custom Device:
+
+    Run the installation script to configure the custom device and launcher:
+    ```sh
+    ./install_custom_device.sh
+    ```
+
+4.  Run:
+    ```sh
+    flutter run -d terminal
+    ```
+
 ### More cli help
 
 ```sh
