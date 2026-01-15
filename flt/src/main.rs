@@ -43,6 +43,10 @@ struct Args {
     /// Disables GPU rendering (Metal) and forces software rendering.
     #[arg(long)]
     no_gpu: bool,
+
+    /// Log to a file in addition to the terminal.
+    #[arg(long)]
+    log_file: Option<String>,
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -57,6 +61,7 @@ fn main() -> Result<(), flt::Error> {
         args.debug_semantics,
         args.no_kitty,
         args.no_gpu,
+        args.log_file,
     )?;
 
     embedder.run_event_loop()?;

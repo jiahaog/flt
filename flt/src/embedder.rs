@@ -49,6 +49,7 @@ impl TerminalEmbedder {
         debug_semantics: bool,
         disable_kitty: bool,
         disable_gpu: bool,
+        log_file: Option<String>,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
 
@@ -58,6 +59,7 @@ impl TerminalEmbedder {
             log_events,
             disable_kitty,
             main_sender.clone(),
+            log_file,
         );
 
         let (sender_a, sender_b, sender_c, sender_d, sender_e) = (

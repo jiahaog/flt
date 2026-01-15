@@ -5,6 +5,7 @@ FLT_BIN="$1"
 ASSETS_DIR="$2"
 ICU_DATA="$3"
 
+# Used to communicate between the flt process and the Flutter Tool.
 LOG_FILE="/tmp/flt_log_$$"
 RUN_FLAG="/tmp/flt_run_$$"
 
@@ -13,8 +14,8 @@ touch "$LOG_FILE"
 touch "$RUN_FLAG"
 
 # Construct the command to run in iTerm2.
-CMD="$FLT_BIN --assets-dir $ASSETS_DIR --icu-data-path $ICU_DATA"
-WRAPPER_CMD="script -F -q $LOG_FILE $CMD; rm $RUN_FLAG; exit"
+CMD="$FLT_BIN --assets-dir $ASSETS_DIR --icu-data-path $ICU_DATA --log-file $LOG_FILE"
+WRAPPER_CMD="$CMD; rm $RUN_FLAG; exit"
 
 echo "Launching flt in new iTerm2 window..."
 

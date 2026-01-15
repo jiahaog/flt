@@ -14,6 +14,7 @@ use crossterm::{ExecutableCommand, QueueableCommand};
 use libc::{ftruncate, shm_open, shm_unlink, O_CREAT, O_RDWR, O_TRUNC};
 use memmap2::MmapMut;
 use std::collections::{HashMap, VecDeque};
+use std::fs::OpenOptions;
 use std::io::{stdout, Stdout, Write};
 use std::iter::zip;
 use std::os::unix::io::FromRawFd;
@@ -28,6 +29,7 @@ pub struct TerminalWindow {
     stdout: Stdout,
     lines: Vec<Vec<TerminalCell>>,
     logs: VecDeque<String>,
+    log_file_writer: Option<std::fs::File>,
     // Coordinates of semantics is represented in the "external" height.
     // See [to_external_height].
     semantics: HashMap<(usize, usize), String>,
@@ -130,6 +132,7 @@ impl TerminalWindow {
         log_events: bool,
         disable_kitty: bool,
         event_sender: Sender<PlatformEvent>,
+        log_file: Option<String>,
     ) -> Self {
         let mut stdout = stdout();
 
@@ -185,10 +188,14 @@ impl TerminalWindow {
             }
         });
 
+        let log_file_writer =
+            log_file.and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok());
+
         Self {
             stdout,
             lines: vec![],
             logs: VecDeque::new(),
+            log_file_writer,
             semantics: HashMap::new(),
             simple_output,
             showing_help: false,
@@ -437,6 +444,18 @@ impl TerminalWindow {
         if self.simple_output {
             println!("{message}");
         }
+
+        if let Some(writer) = &mut self.log_file_writer {
+            if let Err(e) = writeln!(writer, "{}", message) {
+                // If we fail to write to the log file, we probably shouldn't crash the app,
+                // but we can't easily log this error since logging is what failed.
+                // For now, silently ignore (or maybe try to print to stderr if simple_output?).
+                if self.simple_output {
+                    eprintln!("Failed to write to log file: {}", e);
+                }
+            }
+        }
+
         if self.logs.len() == LOGGING_WINDOW_HEIGHT {
             self.logs.pop_front();
         }
