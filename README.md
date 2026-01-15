@@ -1,23 +1,22 @@
 # flt
 
-`flt` is a **Fl**utter **T**erminal Embedder, implementing the Flutter Engine's [Custom Embedder API](https://github.com/flutter/flutter/wiki/Custom-Flutter-Engine-Embedders).
+`flt` is a **Fl**utter **T**erminal Embedder, implementing the Flutter Engine's [Custom Embedder API](https://docs.flutter.dev/embedded).
 
-This embedder draws to the current terminal window using [ANSI Escape Codes](https://en.wikipedia.org/wiki/ANSI_escape_code) to create a [Text-based user interface](https://en.wikipedia.org/wiki/Text-based_user_interface).
+With a terminal that [supports](https://sw.kovidgoyal.net/kitty/graphics-protocol/) Kitty graphics, 60fps rendering can be achieved.
 
-https://github.com/jiahaog/flt/assets/7111741/17071ffc-d141-46c2-88c7-e6a6a7f47147
+![Wonderous app with Kitty Rendering](doc/wonderous_kitty.mov)
 
-## Why?
+Otherwise, it falls back to using [ANSI Escape Codes](https://en.wikipedia.org/wiki/ANSI_escape_code).
 
-Mainly for fun to learn Rust and more about the Flutter Engine. It can also be a quick playground for Flutter without platform-specific or GUI specific dependencies; only a terminal is needed and it can even be used over SSH.
+![Wonderous app with Kitty Rendering](doc/wonderous_ansi.mov)
+
+This works over SSH though it may be slow depending on the network.
 
 ## Supported Platforms / Terminals
 
-This was mainly developed on WSL Linux using the Windows Terminal. It also works on Linux and iTerm2 on macOS. YMMV with other terminal emulators, though it might just work as interfacing with the terminal is done through a cross-platform [library](https://github.com/crossterm-rs/crossterm).
+Kitty rendering was mostly developed on macOS. Tested on iTerm2 and Ghostty.
 
-Not working yet:
-
-- Windows
-- Terminal.app on macOS
+ANSI rendering should work on more terminals.
 
 ## Checkout
 
@@ -43,7 +42,7 @@ cargo run -- <path to the root of your flutter project>
 
 ### Usage with `flutter run` (Custom Device)
 
-You can register the terminal embedder as a [Custom Device](https://github.com/flutter/flutter/blob/master/docs/tool/Using-custom-embedders-with-the-Flutter-CLI.md#the-custom-devices-config-file) to use it directly with the `flutter` tool (supporting hot reload, hot restart etc.).
+The terminal embedder can be registered as a [Custom Device](https://github.com/flutter/flutter/blob/master/docs/tool/Using-custom-embedders-with-the-Flutter-CLI.md#the-custom-devices-config-file) to use it directly with the `flutter` tool (supporting hot reload, hot restart etc.).
 
 1.  Enable Custom Devices:
 
@@ -69,7 +68,7 @@ You can register the terminal embedder as a [Custom Device](https://github.com/f
     flutter run -d terminal
     ```
 
-### More cli help
+### More CLI help for development
 
 ```sh
 # See help for `flt-cli`.
@@ -86,14 +85,6 @@ cargo run -- --args=--help
 - [`flutter-sys`](./flutter-sys/) - Safe Rust bindings to the Flutter Embedder API.
 - [`sample_app`](./sample_app/) - A sample Flutter Project used for local development.
 - [`third_party/flutter`](./third_party/flutter/) - A submodule checkout of the [Flutter Framework](https://github.com/flutter/flutter).
-
-## Missing Pieces
-
-- [ ] Windows support
-- [ ] Fix Terminal.app support on macOS
-- [ ] Keyboard support
-- [ ] Slow performance
-- [ ] Improve semantic label positions
 
 ## References
 
