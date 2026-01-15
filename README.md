@@ -2,13 +2,13 @@
 
 `flt` is a **Fl**utter **T**erminal Embedder, implementing the Flutter Engine's [Custom Embedder API](https://docs.flutter.dev/embedded).
 
-With a terminal that [supports](https://sw.kovidgoyal.net/kitty/graphics-protocol/) Kitty graphics, 60fps rendering can be achieved.
+With a terminal emulator that [supports](https://sw.kovidgoyal.net/kitty/graphics-protocol/) Kitty graphics, 60fps rendering can be achieved.
 
-![Wonderous app with Kitty Rendering](doc/wonderous_kitty.mov)
+https://github.com/user-attachments/assets/2e912395-204a-4a81-9aae-649e7f02b090
 
 Otherwise, it falls back to using [ANSI Escape Codes](https://en.wikipedia.org/wiki/ANSI_escape_code).
 
-![Wonderous app with Kitty Rendering](doc/wonderous_ansi.mov)
+https://github.com/user-attachments/assets/b6e58c93-4f30-43e4-b0e5-07e50947da9c
 
 This works over SSH though it may be slow depending on the network.
 
