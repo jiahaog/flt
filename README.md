@@ -14,7 +14,7 @@ This works over SSH though it may be slow depending on the network.
 
 ## Supported Platforms / Terminals
 
-Kitty rendering was mostly developed on macOS. Tested on iTerm2 and Ghostty.
+Developed on macOS, Kitty rendering has been verified using iTerm2 and Ghostty (macOS) and Kitty (Linux on x86_64 Ubuntu/Arch).
 
 ANSI rendering should work on more terminals.
 
